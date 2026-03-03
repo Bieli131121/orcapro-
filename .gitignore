@@ -26,3 +26,4 @@ dist-ssr
 *.sln
 *.sw?
 >>>>>>> 3e847324fc5f91bc349480519e6b67fd6329b3d5
+.env*.local

@@ -1,11 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo, createContext, useContext } from "react";
-
-// PWA SW
-if (typeof window !== "undefined" && "serviceWorker" in navigator) {
-  window.addEventListener("load", () => { navigator.serviceWorker.register("/sw.js").catch(()=>{}); });
-}
-const ThemeCtx = createContext("dark");
-
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 
 const CATS   = ["Elétrica","Hidráulica","Marcenaria","Pintura","Mecânica","Informática","Limpeza","Jardinagem","Climatização","Outro"];
 const UNITS  = ["un","m","m²","m³","kg","l","serv","hr","dia","kit","cx","pc","vb"];
@@ -93,9 +86,6 @@ const seedData = u0 => ({
   agendamentos:[],
   profile:{...BLANK_PROFILE},
   activity:[],
-  estoque:[],
-  notas:{},
-  fotos:{},
 });
 
 /* ═══ STORAGE ══════════════════════════════════════════════════════ */
@@ -117,9 +107,6 @@ function useStorage(key,fallback,shared=false){
 
 /* ═══ ROOT ══════════════════════════════════════════════════════════ */
 export default function Root(){
-  const[darkMode,setDarkMode]=useStorage("orc6:darkMode",true,false);
-  const dm=darkMode!==false;
-
   const[users,setUsers,lu]=useStorage("orc6:users",[],true);
   const[session,setSession,ls]=useStorage("orc6:session",null,false);
   if(lu||ls)return<Splash/>;
@@ -127,9 +114,9 @@ export default function Root(){
   const currentUser=isAdmin?ADMIN:(users||[]).find(u=>u.id===session?.userId);
   const login=async u=>setSession({userId:u.id,ts:Date.now()});
   const logout=async()=>setSession(null);
-  if(!currentUser)return<ThemeCtx.Provider value={dm}><style>{dm?GCSS:GCSS_LIGHT+GCSS}</style><LoginScreen users={users||[]} onLogin={login}/></ThemeCtx.Provider>;
-  if(isAdmin)return<ThemeCtx.Provider value={dm}><style>{dm?GCSS:GCSS_LIGHT+GCSS}</style><AdminPanel users={users||[]} setUsers={setUsers} onLogout={logout} darkMode={dm} setDarkMode={setDarkMode}/></ThemeCtx.Provider>;
-  return<ThemeCtx.Provider value={dm}><style>{dm?GCSS:GCSS_LIGHT+GCSS}</style><AppShell user={currentUser} users={users} setUsers={setUsers} onLogout={logout} darkMode={dm} setDarkMode={setDarkMode}/></ThemeCtx.Provider>;
+  if(!currentUser)return<React.Fragment><style>{GCSS}</style><LoginScreen users={users||[]} onLogin={login}/></React.Fragment>;
+  if(isAdmin)return<React.Fragment><style>{GCSS}</style><AdminPanel users={users||[]} setUsers={setUsers} onLogout={logout}/></React.Fragment>;
+  return<React.Fragment><style>{GCSS}</style><AppShell user={currentUser} users={users} setUsers={setUsers} onLogout={logout}/></React.Fragment>;
 }
 
 /* ═══ LOGIN ══════════════════════════════════════════════════════════ */
@@ -174,40 +161,6 @@ function LoginScreen({users,onLogin}){
       <div style={L.footer}>OrcaPro © 2026</div>
     </div>
   );
-}
-
-function exportCSV(users){
-  const rows=[["Nome","Login","E-mail","Telefone","Profissão","Plano","Status","Mensalidade","Cadastro","Último Pag.","Próx. Venc."],...(users||[]).map(u=>[u.name,u.login,u.email||"",u.phone||"",u.profession||"",u.plan||"",u.active!==false?"Ativo":"Inativo",u.billingStatus||"em_dia",u.createdAt||"",u.lastPayment||"",u.nextDue||""])];
-  const csv=rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,"'"")}"`).join(",")).join("\n");
-  const a=document.createElement("a");a.href="data:text/csv;charset=utf-8,\uFEFF"+encodeURIComponent(csv);a.download=`orcapro-usuarios-${new Date().toISOString().slice(0,10)}.csv`;a.click();
-}
-
-/* ═══ EMAIL COBRANÇA (EmailJS) ═══════════════════════════════════ */
-async function sendBillingEmail(user, adminProfile) {
-  // Uses EmailJS public API - user needs to configure keys in profile
-  const svcId  = localStorage.getItem("orc6:emailjs:svc")  || "";
-  const tplId  = localStorage.getItem("orc6:emailjs:tpl")  || "";
-  const pubKey = localStorage.getItem("orc6:emailjs:key")  || "";
-  if (!svcId || !tplId || !pubKey) return false;
-  const plan = PLANS[user.plan||"pro"];
-  const body = {
-    service_id: svcId, template_id: tplId, user_id: pubKey,
-    template_params: {
-      to_name:    user.name,
-      to_email:   user.email||"",
-      from_name:  adminProfile?.name||"OrcaPro",
-      plan_label: plan.label,
-      plan_price: plan.price,
-      due_date:   user.nextDue||"",
-      reply_to:   adminProfile?.email||"",
-    }
-  };
-  try {
-    const r = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
-      method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)
-    });
-    return r.status === 200;
-  } catch { return false; }
 }
 
 /* ═══ ADMIN ══════════════════════════════════════════════════════════ */
@@ -284,7 +237,6 @@ function AdminPanel({users,setUsers,onLogout}){
         </nav>
         <div style={S.sBot}>
           <GBtn grad onClick={()=>setModal({type:"user",data:null})}>+ Criar Usuário</GBtn>
-          <GBtn onClick={()=>exportCSV(users)}>📤 Exportar CSV</GBtn>
           <GBtn onClick={onLogout}>🚪 Sair</GBtn>
         </div>
       </aside>
@@ -338,7 +290,6 @@ function AdminPanel({users,setUsers,onLogout}){
                       <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
                         <button style={{...S.prim,background:"linear-gradient(135deg,#22D3A0,#10B981)",color:"#0F1117",fontSize:12,padding:"7px 14px"}} onClick={()=>registerPayment(u.id)}>✅ Registrar pagamento</button>
                         {u.phone&&<button style={{...S.prim,background:"#25D366",color:"#fff",fontSize:12,padding:"7px 12px"}} onClick={()=>sendWAReminder(u)}>📱 Lembrete WA</button>}
-                        {u.email&&<button style={{...S.prim,background:"linear-gradient(135deg,#6366F1,#818CF8)",fontSize:12,padding:"7px 12px"}} onClick={async()=>{const ok=await sendBillingEmail(u,adminProfile);showToast(ok?"E-mail enviado ✓":"Configure o EmailJS primeiro",ok?"ok":"warn");}}>📧 E-mail</button>}
                         <button style={{...S.ghost,fontSize:12,padding:"7px 12px",borderColor:"rgba(248,113,113,.3)",color:"#F87171"}} onClick={()=>markOverdue(u.id)}>⚠️ Atraso</button>
                         <button style={{...S.ghost,fontSize:12,padding:"7px 12px"}} onClick={()=>setModal({type:"billing",data:u})}>📋 Detalhes</button>
                       </div>
@@ -425,17 +376,6 @@ function AdminPanel({users,setUsers,onLogout}){
                 <button style={{...S.prim,marginTop:16,background:"linear-gradient(135deg,#F59E0B,#EF4444)"}} onClick={()=>showToast("Perfil salvo ✓")}>💾 Salvar alterações</button>
               </Card>
               <div style={{padding:14,background:"rgba(245,158,11,0.06)",borderRadius:12,border:"1px solid rgba(245,158,11,0.15)"}}><div style={{fontSize:12,fontWeight:700,color:"#F59E0B",marginBottom:4}}>🔐 Credenciais</div><div style={{fontSize:12,color:"#64748B"}}>Login: <b style={{color:"#94A3B8"}}>analua</b> · Senha: configurada no código</div><div style={{fontSize:11,color:"#475569",marginTop:4}}>Para alterar, entre em contato com o desenvolvedor.</div></div>
-              <Card title="📧 Configurar E-mail de Cobrança (EmailJS)">
-                <div style={{fontSize:12,color:"#64748B",marginBottom:12}}>Integre com o <a href="https://emailjs.com" target="_blank" rel="noreferrer" style={{color:themeP}}>EmailJS</a> para enviar e-mails automáticos de cobrança. Gratuito até 200 e-mails/mês.</div>
-                <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                  {[["Service ID","orc6:emailjs:svc","emailjs_service_xxxxx"],["Template ID","orc6:emailjs:tpl","template_xxxxx"],["Public Key","orc6:emailjs:key","xxxxxxxxxxxxxxxxxx"]].map(([lbl,key,ph])=>(
-                    <FL key={key} label={lbl}>
-                      <input style={S.inp} defaultValue={localStorage.getItem(key)||""} placeholder={ph} onChange={e=>localStorage.setItem(key,e.target.value)}/>
-                    </FL>
-                  ))}
-                  <div style={{fontSize:11,color:"#475569",padding:"8px 12px",background:"#0F172A",borderRadius:8,border:"1px solid #1E293B"}}>💡 No template EmailJS use as variáveis: <code style={{color:themeP}}>to_name, to_email, plan_label, plan_price, due_date, from_name</code></div>
-                </div>
-              </Card>
             </div>
           </div>
         )}
@@ -468,29 +408,113 @@ function ModalBillingDetail({data,onClose,onRegister,onWA,onOverdue}){
 }
 
 function ModalUserForm({data,onSave,onClose}){
-  const[f,sf]=useState(data||{name:"",login:"",email:"",phone:"",password:"",profession:"Eletricista",plan:"pro",active:true});
-  const[show,setShow]=useState(false);const set=(k,v)=>sf(p=>({...p,[k]:v}));
+  const[f,sf]=useState(data?{...data,password:"",_passwordChanged:false}:{name:"",login:"",email:"",phone:"",password:"",profession:"Eletricista",plan:"pro",active:true});
+  const[show,setShow]=useState(false);
+  const[showNew,setShowNew]=useState(false);
+  const[tab,setTab]=useState("dados");
+  const set=(k,v)=>sf(p=>({...p,[k]:v}));
   const ok=f.name&&f.login&&(data||f.password);
+  const TABS=[{id:"dados",lbl:"👤 Dados"},{id:"acesso",lbl:"🔐 Login & Senha"}];
   return(
     <Overlay onClose={onClose}>
-      <div style={S.mhead}><div><div style={S.mtitle}>{data?"Editar Usuário":"Criar Usuário"}</div></div><XBtn onClick={onClose}/></div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-        <div style={{gridColumn:"1/-1"}}><FL label="Nome completo *"><input style={S.inp} value={f.name} onChange={e=>set("name",e.target.value)} placeholder="Ex: João da Silva"/></FL></div>
-        <FL label="Login *"><input style={S.inp} value={f.login} onChange={e=>set("login",e.target.value.replace(/\s/g,""))} placeholder="joao123"/></FL>
-        <FL label={data?"Nova senha":"Senha *"}><div style={{position:"relative"}}><input style={{...S.inp,paddingRight:36}} type={show?"text":"password"} value={f.password} onChange={e=>set("password",e.target.value)} placeholder="Mín. 4 caracteres"/><button onClick={()=>setShow(s=>!s)} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:13}}>{show?"🙈":"👁️"}</button></div></FL>
-        <FL label="E-mail"><input style={S.inp} type="email" value={f.email} onChange={e=>set("email",e.target.value)} placeholder="email@exemplo.com"/></FL>
-        <FL label="WhatsApp"><input style={S.inp} value={f.phone} onChange={e=>set("phone",e.target.value)} placeholder="11999990000"/></FL>
-        <FL label="Profissão"><select style={S.sel} value={f.profession} onChange={e=>set("profession",e.target.value)}>{PROFS.map(p=><option key={p}>{p}</option>)}</select></FL>
-        <FL label="Plano"><select style={S.sel} value={f.plan||"pro"} onChange={e=>set("plan",e.target.value)}>{Object.entries(PLANS).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}</select></FL>
-        <div style={{gridColumn:"1/-1",display:"flex",alignItems:"center",gap:12,padding:"10px 14px",background:"#0F172A",borderRadius:10,border:"1px solid #1E293B"}}><span style={{fontSize:13,color:"#94A3B8"}}>Conta ativa</span><Toggle val={f.active} onChange={v=>set("active",v)}/><span style={{fontSize:12,color:f.active?"#22D3A0":"#64748B"}}>{f.active?"Ativa":"Bloqueada"}</span></div>
+      <div style={S.mhead}>
+        <div>
+          <div style={S.mtitle}>{data?"Editar Usuário":"Criar Usuário"}</div>
+          {data&&<div style={S.msub}>Login atual: <b style={{color:"#818CF8",fontFamily:"monospace"}}>{data.login}</b></div>}
+        </div>
+        <XBtn onClick={onClose}/>
       </div>
-      <div style={{display:"flex",gap:8,marginTop:18,justifyContent:"flex-end"}}><button style={S.ghost} onClick={onClose}>Cancelar</button><button style={{...S.prim,opacity:ok?1:.4,cursor:ok?"pointer":"not-allowed"}} onClick={()=>ok&&onSave(f)}>{data?"💾 Salvar":"✅ Criar Conta"}</button></div>
+
+      {/* Tabs */}
+      <div style={{display:"flex",gap:4,marginBottom:18,background:"#0F172A",borderRadius:10,padding:4}}>
+        {TABS.map(t=>(
+          <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:"7px 10px",borderRadius:8,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:tab===t.id?700:500,background:tab===t.id?"#1E293B":"transparent",color:tab===t.id?"#F1F5F9":"#64748B",transition:"all .15s"}}>
+            {t.lbl}
+          </button>
+        ))}
+      </div>
+
+      {tab==="dados"&&(
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <div style={{gridColumn:"1/-1"}}><FL label="Nome completo *"><input style={S.inp} value={f.name} onChange={e=>set("name",e.target.value)} placeholder="Ex: João da Silva"/></FL></div>
+          <FL label="E-mail"><input style={S.inp} type="email" value={f.email||""} onChange={e=>set("email",e.target.value)} placeholder="email@exemplo.com"/></FL>
+          <FL label="WhatsApp"><input style={S.inp} value={f.phone||""} onChange={e=>set("phone",e.target.value)} placeholder="11999990000"/></FL>
+          <FL label="Profissão"><select style={S.sel} value={f.profession||"Eletricista"} onChange={e=>set("profession",e.target.value)}>{PROFS.map(p=><option key={p}>{p}</option>)}</select></FL>
+          <FL label="Plano"><select style={S.sel} value={f.plan||"pro"} onChange={e=>set("plan",e.target.value)}>{Object.entries(PLANS).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}</select></FL>
+          <div style={{gridColumn:"1/-1",display:"flex",alignItems:"center",gap:12,padding:"10px 14px",background:"#0F172A",borderRadius:10,border:"1px solid #1E293B"}}>
+            <span style={{fontSize:13,color:"#94A3B8"}}>Conta ativa</span>
+            <Toggle val={f.active!==false} onChange={v=>set("active",v)}/>
+            <span style={{fontSize:12,color:f.active!==false?"#22D3A0":"#64748B"}}>{f.active!==false?"Ativa":"Bloqueada"}</span>
+          </div>
+        </div>
+      )}
+
+      {tab==="acesso"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+
+          {/* Login */}
+          <div style={{padding:"14px 16px",background:"#0F172A",borderRadius:12,border:"1px solid #1E293B"}}>
+            <div style={{fontSize:11,color:"#475569",fontWeight:700,textTransform:"uppercase",letterSpacing:.7,marginBottom:10}}>🔑 Login de acesso</div>
+            {data&&<div style={{fontSize:12,color:"#64748B",marginBottom:10}}>Login atual: <b style={{color:"#818CF8",fontFamily:"monospace",fontSize:13}}>{data.login}</b></div>}
+            <FL label={data?"Novo login *":"Login *"}>
+              <input
+                style={S.inp}
+                value={f.login||""}
+                onChange={e=>set("login",e.target.value.replace(/\s/g,"").toLowerCase())}
+                placeholder="Ex: joao123"
+                autoComplete="off"
+              />
+            </FL>
+            <div style={{fontSize:11,color:"#475569",marginTop:6}}>Somente letras minúsculas, números e underline. Sem espaços.</div>
+          </div>
+
+          {/* Senha */}
+          <div style={{padding:"14px 16px",background:"#0F172A",borderRadius:12,border:"1px solid #1E293B"}}>
+            <div style={{fontSize:11,color:"#475569",fontWeight:700,textTransform:"uppercase",letterSpacing:.7,marginBottom:10}}>🔒 Senha</div>
+            {data&&(
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12,padding:"8px 12px",background:"rgba(245,158,11,0.06)",borderRadius:8,border:"1px solid rgba(245,158,11,0.15)"}}>
+                <span style={{fontSize:13}}>⚠️</span>
+                <span style={{fontSize:12,color:"#F59E0B"}}>Deixe em branco para manter a senha atual</span>
+              </div>
+            )}
+            <FL label={data?"Nova senha (opcional)":"Senha *"}>
+              <div style={{position:"relative"}}>
+                <input
+                  style={{...S.inp,paddingRight:38}}
+                  type={showNew?"text":"password"}
+                  value={f.password||""}
+                  onChange={e=>{set("password",e.target.value);set("_passwordChanged",true);}}
+                  placeholder={data?"Digite para alterar a senha…":"Mín. 4 caracteres"}
+                  autoComplete="new-password"
+                />
+                <button onClick={()=>setShowNew(s=>!s)} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:14}}>
+                  {showNew?"🙈":"👁️"}
+                </button>
+              </div>
+            </FL>
+            {f.password&&f.password.length<4&&<div style={{fontSize:11,color:"#F87171",marginTop:4}}>⚠️ Senha muito curta (mín. 4 caracteres)</div>}
+            {f.password&&f.password.length>=4&&<div style={{fontSize:11,color:"#22D3A0",marginTop:4}}>✓ Senha válida</div>}
+          </div>
+
+          {/* Info box */}
+          <div style={{padding:"10px 14px",background:"rgba(129,140,248,0.06)",border:"1px solid rgba(129,140,248,0.15)",borderRadius:10,fontSize:12,color:"#64748B"}}>
+            <span style={{color:"#818CF8",fontWeight:700}}>💡 Lembrete:</span> Após alterar o login ou senha, avise o usuário para que ele possa acessar o sistema com as novas credenciais.
+          </div>
+        </div>
+      )}
+
+      <div style={{display:"flex",gap:8,marginTop:20,justifyContent:"flex-end"}}>
+        <button style={S.ghost} onClick={onClose}>Cancelar</button>
+        <button style={{...S.prim,opacity:ok?1:.4,cursor:ok?"pointer":"not-allowed"}} onClick={()=>ok&&onSave(f)}>
+          {data?"💾 Salvar alterações":"✅ Criar Conta"}
+        </button>
+      </div>
     </Overlay>
   );
 }
 
 /* ═══ APP SHELL ══════════════════════════════════════════════════ */
-function AppShell({user,onLogout,darkMode,setDarkMode}){
+function AppShell({user,onLogout}){
   const[data,setData,loadD]=useStorage(`orc6:data:${user.id}`,null,false);
   useEffect(()=>{if(!loadD&&data===null)setData(seedData(user.id));},[loadD,data]); //eslint-disable-line
   if(loadD||data===null)return<Splash user={user}/>;
@@ -498,16 +522,15 @@ function AppShell({user,onLogout,darkMode,setDarkMode}){
   const profile={...BLANK_PROFILE,...(data.profile||{})};
   const theme=THEMES.find(t=>t.id===profile.themeId)||THEMES[0];
   const P=profile.primaryColor||theme.primary;const A=profile.accentColor||theme.accent;
-  return<App user={user} data={{...data,profile}} patch={patch} themeP={P} themeA={A} onLogout={onLogout} darkMode={darkMode} setDarkMode={setDarkMode}/>;
+  return<App user={user} data={{...data,profile}} patch={patch} themeP={P} themeA={A} onLogout={onLogout}/>;
 }
 
 /* ═══ APP ══════════════════════════════════════════════════════════ */
-function App({user,data,patch,themeP,themeA,onLogout,darkMode,setDarkMode}){
-  const{budgets=[],clients=[],templates=[],profile={},activity=[],agendamentos=[],estoque=[],notas={},fotos={}}=data;
+function App({user,data,patch,themeP,themeA,onLogout}){
+  const{budgets=[],clients=[],templates=[],profile={},activity=[],agendamentos=[]}=data;
   const setBudgets=patch("budgets");const setClients=patch("clients");
   const setTemplates=patch("templates");const setProfile=patch("profile");
   const setActivity=patch("activity");const setAgendamentos=patch("agendamentos");
-  const setEstoque=patch("estoque");const setNotas=patch("notas");const setFotos=patch("fotos");
   const[page,setPage]=useState("dashboard");
   const[modal,setModal]=useState(null);const[toast,setToast]=useState(null);
   const[filter,setFilter]=useState({status:"todos",cat:"todas",q:"",sort:"newest"});
@@ -533,7 +556,6 @@ function App({user,data,patch,themeP,themeA,onLogout,darkMode,setDarkMode}){
   };
   const setStatus=(id,st)=>{setBudgets(bs=>bs.map(b=>b.id===id?{...b,status:st}:b));showToast(`Status: ${STATUS[st].label}`);};
   const delBudget=id=>{setBudgets(bs=>bs.filter(b=>b.id!==id));setModal(null);showToast("Removido","warn");};
-  const dupBudget=b=>{const n={...b,id:uid(),num:nextNum,createdAt:today(),status:"rascunho",rating:null};setBudgets(bs=>[n,...bs]);setOrcCounter(c=>(c||1)+1);showToast("Orçamento duplicado ✓");setModal(null);};
   const saveClient=c=>{
     if(c.email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email)){showToast("E-mail inválido","warn");return;}
     if(c.phone&&c.phone.replace(/\D/g,"").length<10){showToast("Telefone inválido (mín. 10 dígitos)","warn");return;}
@@ -583,7 +605,7 @@ function App({user,data,patch,themeP,themeA,onLogout,darkMode,setDarkMode}){
     {id:"dashboard",ico:"📊",lbl:"Dashboard"},{id:"lista",ico:"📋",lbl:"Orçamentos"},
     {id:"clientes",ico:"👥",lbl:"Clientes"},{id:"agenda",ico:"📅",lbl:"Agenda"},
     {id:"relatorio",ico:"📈",lbl:"Relatórios"},{id:"templates",ico:"📄",lbl:"Templates"},
-    {id:"estoque",ico:"📦",lbl:"Estoque"},{id:"atividade",ico:"🕐",lbl:"Atividades"},{id:"config",ico:"⚙️",lbl:"Meu Perfil"},
+    {id:"atividade",ico:"🕐",lbl:"Atividades"},{id:"config",ico:"⚙️",lbl:"Meu Perfil"},
   ];
 
   return(
@@ -610,7 +632,6 @@ function App({user,data,patch,themeP,themeA,onLogout,darkMode,setDarkMode}){
           <div style={{fontSize:13,color:"#475569"}}>{new Date().toLocaleDateString("pt-BR",{weekday:"long",day:"numeric",month:"long"})}</div>
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             {profile.tagline&&<div style={{fontSize:11,color:themeP,fontWeight:600,background:`${themeP}10`,padding:"3px 10px",borderRadius:20,border:`1px solid ${themeP}25`}}>{profile.tagline}</div>}
-            <button title={darkMode?"Modo claro":"Modo escuro"} onClick={()=>setDarkMode(d=>!d)} style={{background:"none",border:"1px solid #1E293B",borderRadius:8,width:30,height:30,cursor:"pointer",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center"}}>{darkMode?"☀️":"🌙"}</button>
             <button style={{...S.topBtn,color:themeP}} onClick={()=>setPage("config")}>{profile.logo?<img src={profile.logo} alt="" style={{width:26,height:26,borderRadius:"50%",objectFit:"cover"}}/>:<Ava name={user.name} size={26} color={themeP}/>}<span style={{fontSize:13,fontWeight:600,color:"#CBD5E1"}}>{(profile.name||user.name).split(" ")[0]}</span></button>
           </div>
         </div>
@@ -623,19 +644,15 @@ function App({user,data,patch,themeP,themeA,onLogout,darkMode,setDarkMode}){
           {page==="templates"&&<PageTemplates templates={templates} setModal={setModal}/>}
           {page==="atividade"&&<PageAtividade activity={activity}/>}
           {page==="config"   &&<PageConfig profile={profile} setProfile={setProfile} user={user} themeP={themeP} themeA={themeA} showToast={showToast}/>}
-          {page==="estoque"  &&<PageEstoque estoque={estoque} setEstoque={setEstoque} themeP={themeP} themeA={themeA} showToast={showToast}/>}
         </main>
       </div>
       {modal?.type==="budget"      &&<ModalBudget data={modal.data} clients={clients} templates={templates} onSave={saveBudget} onClose={()=>setModal(null)} nextNum={nextNum} userId={user.id} themeP={themeP} themeA={themeA}/>}
-      {modal?.type==="detail"      &&<ModalDetail data={modal.data} onClose={()=>setModal(null)} setStatus={setStatus} sendWA={sendWA} onEdit={d=>setModal({type:"budget",data:d})} onDelete={delBudget} dupBudget={dupBudget} themeP={themeP} setModal={setModal}/>}
+      {modal?.type==="detail"      &&<ModalDetail data={modal.data} onClose={()=>setModal(null)} setStatus={setStatus} sendWA={sendWA} onEdit={d=>setModal({type:"budget",data:d})} onDelete={delBudget} themeP={themeP} setModal={setModal}/>}
       {modal?.type==="client"      &&<ModalClient data={modal.data} onSave={saveClient} onDelete={delClient} onClose={()=>setModal(null)}/>}
       {modal?.type==="template"    &&<ModalTemplate data={modal.data} onSave={saveTpl} onDelete={delTpl} onClose={()=>setModal(null)}/>}
       {modal?.type==="preview"     &&<ModalPreview data={modal.data} profile={profile} onClose={()=>setModal(null)} sendWA={sendWA} themeP={themeP} themeA={themeA}/>}
       {modal?.type==="recibo"      &&<ModalRecibo data={modal.data} profile={profile} onClose={()=>setModal(null)} themeP={themeP} themeA={themeA}/>}
       {modal?.type==="rating"      &&<ModalRating data={modal.data} onSave={r=>setBudgets(bs=>bs.map(b=>b.id===modal.data.id?{...b,rating:r}:b))} onClose={()=>setModal(null)} themeP={themeP}/>}
-      {modal?.type==="fotos"       &&<ModalFotos budgetId={modal.data.id} budgetTitle={modal.data.title} fotos={fotos} setFotos={setFotos} onClose={()=>setModal(null)} themeP={themeP}/>}
-      {modal?.type==="notas"       &&<ModalNotas budgetId={modal.data.id} budgetTitle={modal.data.title} notas={notas} setNotas={setNotas} onClose={()=>setModal(null)} themeP={themeP}/>}
-      {modal?.type==="link"        &&<ModalPublicLink data={modal.data} profile={profile} themeP={themeP} themeA={themeA} onClose={()=>setModal(null)}/>}
       {modal?.type==="agendamento" &&<ModalAgendamento data={modal.data} onSave={a=>setAgendamentos(ag=>[...(ag||[]),a])} onClose={()=>setModal(null)} themeP={themeP}/>}
       {toast&&<Toast msg={toast.msg} type={toast.type} color={themeP}/>}
     </div>
@@ -1312,7 +1329,7 @@ function ModalBudget({data,clients,templates,onSave,onClose,nextNum,userId,theme
   );
 }
 
-function ModalDetail({data,onClose,setStatus,sendWA,onEdit,onDelete,dupBudget,themeP,setModal}){
+function ModalDetail({data,onClose,setStatus,sendWA,onEdit,onDelete,themeP,setModal}){
   const[del,setDel]=useState(false);const sub=calcSub(data.items);const dl=daysLeft(data.date,data.validity);
   return(
     <Overlay onClose={onClose}>
@@ -1347,12 +1364,8 @@ function ModalDetail({data,onClose,setStatus,sendWA,onEdit,onDelete,dupBudget,th
         </React.Fragment>}
       </div>
       <div style={{display:"flex",gap:6}}>
-        <button style={{...S.ghost,padding:"8px 12px"}} onClick={()=>onEdit(data)}>✏️ Editar</button>
-        <button style={{...S.ghost,padding:"8px 12px"}} onClick={()=>setModal({type:"fotos",data})}>📸 Fotos</button>
-        <button style={{...S.ghost,padding:"8px 12px"}} onClick={()=>setModal({type:"notas",data})}>📝 Notas</button>
-        <button style={{...S.ghost,padding:"8px 12px"}} onClick={()=>setModal({type:"link",data})}>🔗 Link</button>
-        <button style={{...S.ghost,padding:"8px 12px"}} onClick={()=>{dupBudget(data);onClose();}}>📋 Duplicar</button>
-        <button style={{...S.ghost,padding:"8px 12px",borderColor:"rgba(248,113,113,.3)",color:"#F87171"}} onClick={()=>setDel(true)}>🗑️ Excluir</button>
+        <button style={{...S.ghost,padding:"8px 14px"}} onClick={()=>onEdit(data)}>✏️ Editar</button>
+        <button style={{...S.ghost,padding:"8px 14px",borderColor:"rgba(248,113,113,.3)",color:"#F87171"}} onClick={()=>setDel(true)}>🗑️ Excluir</button>
       </div>
       {del&&<div style={{marginTop:10,padding:12,background:"rgba(248,113,113,.07)",borderRadius:9,border:"1px solid rgba(248,113,113,.2)"}}><div style={{fontSize:13,color:"#F87171",marginBottom:8}}>Confirmar exclusão?</div><div style={{display:"flex",gap:8}}><button style={{...S.prim,background:"#F87171",color:"#fff"}} onClick={()=>onDelete(data.id)}>Excluir</button><button style={S.ghost} onClick={()=>setDel(false)}>Cancelar</button></div></div>}
     </Overlay>
@@ -1429,263 +1442,6 @@ const Splash=({user})=><div style={{display:"flex",height:"100vh",alignItems:"ce
 const getByMonth=bs=>{const m={};bs.forEach(b=>{const k=b.date?.slice(0,7)||"";if(!k)return;if(!m[k])m[k]={month:k,count:0,receita:0};m[k].count++;if(b.status==="aprovado")m[k].receita+=b.total;});return Object.values(m).sort((a,b)=>a.month.localeCompare(b.month)).slice(-6);};
 const getByCategory=bs=>{const m={};bs.forEach(b=>{m[b.category]=(m[b.category]||0)+1;});const t=Math.max(Object.values(m).reduce((s,v)=>s+v,0),1);return Object.entries(m).map(([name,count])=>({name,count,pct:Math.round(count/t*100)})).sort((a,b)=>b.count-a.count);};
 const getTopClients=(bs,cs)=>{const m={};bs.forEach(b=>{if(!m[b.clientName])m[b.clientName]={id:b.clientId||b.clientName,name:b.clientName,count:0,aprovados:0,receita:0};m[b.clientName].count++;if(b.status==="aprovado"){m[b.clientName].aprovados++;m[b.clientName].receita+=b.total;}});return Object.values(m).sort((a,b)=>b.receita-a.receita);};
-
-
-/* ═══ MODAL FOTOS ══════════════════════════════════════════════════ */
-function ModalFotos({budgetId,budgetTitle,fotos,setFotos,onClose,themeP}){
-  const imgs=(fotos||{})[budgetId]||[];
-  const fileRef=useRef();
-  const addFotos=async e=>{
-    const files=Array.from(e.target.files||[]);
-    const news=[];
-    for(const f of files){
-      if(f.size>5*1024*1024){alert(`${f.name} muito grande (máx 5MB)`);continue;}
-      const b64=await readFile(f);
-      news.push({id:uid(),src:b64,name:f.name,ts:new Date().toLocaleString("pt-BR"),label:""});
-    }
-    if(news.length)setFotos(fts=>({...fts,[budgetId]:[...imgs,...news]}));
-  };
-  const delFoto=id=>setFotos(fts=>({...fts,[budgetId]:imgs.filter(i=>i.id!==id)}));
-  const setLabel=(id,label)=>setFotos(fts=>({...fts,[budgetId]:imgs.map(i=>i.id===id?{...i,label}:i)}));
-  return(
-    <Overlay onClose={onClose} wide>
-      <div style={S.mhead}><div><div style={S.mtitle}>📸 Galeria de Fotos</div><div style={S.msub}>{budgetTitle} · {imgs.length} foto(s)</div></div><XBtn onClick={onClose}/></div>
-      <div style={{display:"flex",gap:8,marginBottom:16}}>
-        <button style={{...S.prim,background:`linear-gradient(135deg,${themeP},#6366F1)`}} onClick={()=>fileRef.current?.click()}>📁 Adicionar fotos</button>
-        <input ref={fileRef} type="file" accept="image/*" multiple style={{display:"none"}} onChange={addFotos}/>
-        <span style={{fontSize:12,color:"#475569",alignSelf:"center"}}>PNG, JPG · Máx 5MB por foto</span>
-      </div>
-      {imgs.length===0?(
-        <div style={{textAlign:"center",padding:"40px 0",color:"#475569"}}>
-          <div style={{fontSize:44,marginBottom:10}}>📷</div>
-          <div style={{fontWeight:600}}>Nenhuma foto ainda</div>
-          <div style={{fontSize:12,marginTop:4}}>Adicione fotos do serviço (antes/depois, progresso, etc.)</div>
-        </div>
-      ):(
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:12}}>
-          {imgs.map(img=>(
-            <div key={img.id} style={{background:"#0F172A",borderRadius:12,overflow:"hidden",border:"1px solid #1E293B"}}>
-              <div style={{position:"relative"}}>
-                <img src={img.src} alt={img.name} style={{width:"100%",height:140,objectFit:"cover",display:"block"}}/>
-                <button onClick={()=>delFoto(img.id)} style={{position:"absolute",top:6,right:6,width:22,height:22,borderRadius:"50%",background:"rgba(248,113,113,.9)",border:"none",cursor:"pointer",color:"#fff",fontSize:11,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:800}}>✕</button>
-              </div>
-              <div style={{padding:"8px 10px"}}>
-                <input style={{...S.inp,fontSize:11,padding:"5px 8px"}} placeholder="Legenda (ex: antes, depois…)" value={img.label||""} onChange={e=>setLabel(img.id,e.target.value)}/>
-                <div style={{fontSize:9,color:"#475569",marginTop:4}}>{img.ts}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </Overlay>
-  );
-}
-
-/* ═══ MODAL NOTAS INTERNAS ══════════════════════════════════════ */
-function ModalNotas({budgetId,budgetTitle,notas,setNotas,onClose,themeP}){
-  const lista=(notas||{})[budgetId]||[];
-  const[txt,setTxt]=useState("");
-  const add=()=>{if(!txt.trim())return;setNotas(n=>({...n,[budgetId]:[...(n[budgetId]||[]),{id:uid(),txt:txt.trim(),ts:new Date().toLocaleString("pt-BR")}]}));setTxt("");};
-  const del=id=>setNotas(n=>({...n,[budgetId]:lista.filter(x=>x.id!==id)}));
-  return(
-    <Overlay onClose={onClose}>
-      <div style={S.mhead}><div><div style={S.mtitle}>📝 Notas Internas</div><div style={S.msub}>{budgetTitle} · Visível só para você</div></div><XBtn onClick={onClose}/></div>
-      <div style={{display:"flex",gap:8,marginBottom:14}}>
-        <textarea style={{...S.inp,flex:1,height:68,resize:"vertical"}} placeholder="Ex: Cliente pediu desconto, aguardando material, chave com porteiro…" value={txt} onChange={e=>setTxt(e.target.value)}/>
-        <button style={{...S.prim,background:`linear-gradient(135deg,${themeP},#6366F1)`,alignSelf:"flex-end",padding:"9px 16px"}} onClick={add}>+ Adicionar</button>
-      </div>
-      <div style={{display:"flex",flexDirection:"column",gap:8}}>
-        {lista.length===0&&<div style={{textAlign:"center",padding:"24px 0",color:"#475569",fontSize:13}}>Nenhuma nota ainda</div>}
-        {[...lista].reverse().map(n=>(
-          <div key={n.id} style={{background:"rgba(245,158,11,0.06)",border:"1px solid rgba(245,158,11,0.15)",borderRadius:10,padding:"10px 14px",position:"relative"}}>
-            <div style={{fontSize:13,color:"#CBD5E1",lineHeight:1.5,paddingRight:24}}>{n.txt}</div>
-            <div style={{fontSize:10,color:"#475569",marginTop:4}}>{n.ts}</div>
-            <button onClick={()=>del(n.id)} style={{position:"absolute",top:8,right:8,background:"none",border:"none",cursor:"pointer",color:"#475569",fontSize:14}}>✕</button>
-          </div>
-        ))}
-      </div>
-    </Overlay>
-  );
-}
-
-/* ═══ MODAL LINK PÚBLICO ════════════════════════════════════════ */
-function ModalPublicLink({data,profile,themeP,themeA,onClose}){
-  const[copied,setCopied]=useState(false);
-  const[customMsg,setCustomMsg]=useState("");
-  const sub=calcSub(data.items);
-
-  // Build a self-contained HTML blob for the public page
-  const buildHTML=()=>{
-    const items=data.items.map(it=>`<tr><td style="padding:8px 12px;border:1px solid #e2e8f0">${it.desc}</td><td style="padding:8px 12px;border:1px solid #e2e8f0;text-align:center">${it.qty} ${it.unit}</td><td style="padding:8px 12px;border:1px solid #e2e8f0;text-align:right">R$ ${Number((it.qty||0)*(it.price||0)).toLocaleString("pt-BR",{minimumFractionDigits:2})}</td></tr>`).join("");
-    const total=`R$ ${Number(data.total||0).toLocaleString("pt-BR",{minimumFractionDigits:2})}`;
-    return`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Orçamento ${data.num} - ${profile.name||"OrcaPro"}</title><style>body{font-family:sans-serif;background:#f1f5f9;margin:0;padding:20px}h1{color:${themeP}}table{width:100%;border-collapse:collapse}th{background:${themeP};color:#fff;padding:9px 12px;text-align:left}.card{background:#fff;border-radius:12px;padding:24px;max-width:700px;margin:0 auto;box-shadow:0 4px 24px rgba(0,0,0,.1)}.total{font-size:22px;font-weight:900;color:${themeP}}.footer{margin-top:18px;font-size:12px;color:#64748b}</style></head><body><div class="card">${profile.logo?`<img src="${profile.logo}" style="height:48px;margin-bottom:12px;object-fit:contain">`:""}<h1>${profile.name||"Profissional"}</h1><p style="color:#64748b;margin-top:-8px">${profile.profession||""}</p><hr style="border-color:#e2e8f0;margin:16px 0"><h2 style="color:#1e293b">${data.title}${data.urgent?" 🚨":""}</h2><p><b>Cliente:</b> ${data.clientName} &nbsp; <b>Nº:</b> ${data.num} &nbsp; <b>Data:</b> ${data.date} &nbsp; <b>Válido:</b> ${data.validity} dias</p>${data.desc?`<p style="color:#64748b;font-style:italic">${data.desc}</p>`:""}<table><thead><tr><th>Descrição</th><th>Qtd/Un</th><th>Total</th></tr></thead><tbody>${items}</tbody></table><div style="text-align:right;margin-top:12px"><div class="total">TOTAL: ${total}</div>${data.paymentMethod?`<div style="color:#64748b;font-size:13px">via ${data.paymentMethod}</div>`:""}</div>${data.notes?`<p style="background:#fffbeb;padding:10px;border-radius:8px;border:1px solid #fde68a;color:#92400e">📝 ${data.notes}</p>`:""}<div class="footer">${customMsg||profile.signOff||""}<br>${profile.phone?"📱 "+profile.phone+" &nbsp;":""} ${profile.email?"✉️ "+profile.email+" &nbsp;":""} ${profile.pixKey?"PIX: "+profile.pixKey:""}</div></div></body></html>`;
-  };
-
-  const downloadHTML=()=>{
-    const html=buildHTML();
-    const a=document.createElement("a");
-    a.href="data:text/html;charset=utf-8,"+encodeURIComponent(html);
-    a.download=`orcamento-${data.num}.html`;
-    a.click();
-  };
-
-  const openPreview=()=>{
-    const w=window.open("","_blank");
-    w.document.write(buildHTML());
-    w.document.close();
-  };
-
-  const shareWA=()=>{
-    const lines=data.items.map(i=>`  • ${i.desc} (${i.qty} ${i.unit}) → R$ ${Number((i.qty||0)*(i.price||0)).toLocaleString("pt-BR",{minimumFractionDigits:2})}`).join("\n");
-    const msg=`${customMsg||profile.signOff||"Olá! Segue seu orçamento:"}\n\n🔧 *${data.num} — ${data.title}*\n\n📝 *Itens:*\n${lines}\n\n💰 *TOTAL: R$ ${Number(data.total).toLocaleString("pt-BR",{minimumFractionDigits:2})}*\n📅 Válido ${data.validity} dias · ${data.date}`;
-    window.open(`https://wa.me/55${(data.phone||"").replace(/\D/g,"")}?text=${encodeURIComponent(msg)}`,"_blank");
-  };
-
-  const exportPDF=()=>{
-    // Open HTML in new tab and trigger print (browser's built-in PDF)
-    const w=window.open("","_blank");
-    const html=buildHTML();
-    w.document.write(html.replace("</body>","<script>window.onload=function(){window.print();}<\/script></body>"));
-    w.document.close();
-  };
-
-  return(
-    <Overlay onClose={onClose} wide>
-      <div style={S.mhead}><div><div style={S.mtitle}>🔗 Compartilhar Orçamento</div><div style={S.msub}>{data.num} · {data.clientName}</div></div><XBtn onClick={onClose}/></div>
-      
-      <div style={{marginBottom:16}}>
-        <FL label="Mensagem personalizada (opcional)">
-          <textarea style={{...S.inp,height:60,resize:"vertical"}} value={customMsg} onChange={e=>setCustomMsg(e.target.value)} placeholder={profile.signOff||"Olá! Segue o orçamento conforme combinado."}/>
-        </FL>
-      </div>
-
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
-        <button style={{...S.prim,background:"#25D366",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"12px"}} onClick={shareWA}>
-          <span style={{fontSize:18}}>📱</span><div style={{textAlign:"left"}}><div style={{fontSize:13,fontWeight:800}}>Enviar via WhatsApp</div><div style={{fontSize:10,opacity:.8}}>Texto formatado com todos os itens</div></div>
-        </button>
-        <button style={{...S.prim,background:`linear-gradient(135deg,${themeP},${themeA})`,display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"12px"}} onClick={exportPDF}>
-          <span style={{fontSize:18}}>📄</span><div style={{textAlign:"left"}}><div style={{fontSize:13,fontWeight:800}}>Exportar PDF</div><div style={{fontSize:10,opacity:.8}}>Salvar como PDF pelo navegador</div></div>
-        </button>
-        <button style={{...S.ghost,display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"12px"}} onClick={openPreview}>
-          <span style={{fontSize:18}}>👁️</span><div style={{textAlign:"left"}}><div style={{fontSize:13,fontWeight:700,color:"#CBD5E1"}}>Visualizar página</div><div style={{fontSize:10,color:"#64748B"}}>Abre o orçamento como página web</div></div>
-        </button>
-        <button style={{...S.ghost,display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"12px"}} onClick={downloadHTML}>
-          <span style={{fontSize:18}}>💾</span><div style={{textAlign:"left"}}><div style={{fontSize:13,fontWeight:700,color:"#CBD5E1"}}>Baixar HTML</div><div style={{fontSize:10,color:"#64748B"}}>Arquivo completo para enviar</div></div>
-        </button>
-      </div>
-
-      <div style={{padding:"12px 16px",background:`${themeP}08`,border:`1px solid ${themeP}20`,borderRadius:12,fontSize:12,color:"#64748B"}}>
-        <span style={{color:themeP,fontWeight:700}}>💡 Dica:</span> Use "Exportar PDF" para salvar como PDF pelo diálogo de impressão do navegador. O cliente recebe um documento profissional completo com sua identidade visual.
-      </div>
-    </Overlay>
-  );
-}
-
-/* ═══ PAGE ESTOQUE ══════════════════════════════════════════════ */
-function PageEstoque({estoque,setEstoque,themeP,themeA,showToast}){
-  const[modal,setModal]=useState(null);
-  const[q,setQ]=useState("");
-  const filtered=(estoque||[]).filter(m=>[m.name,m.category,m.unit].some(v=>v?.toLowerCase().includes(q.toLowerCase())));
-  const totalValue=(estoque||[]).reduce((s,m)=>s+(parseFloat(m.qty)||0)*(parseFloat(m.cost)||0),0);
-  const lowStock=(estoque||[]).filter(m=>m.minQty&&parseFloat(m.qty)<=parseFloat(m.minQty));
-  const save=item=>{
-    setEstoque(es=>es.find(x=>x.id===item.id)?es.map(x=>x.id===item.id?item:x):[...es,{...item,id:uid()}]);
-    showToast("Material salvo ✓");setModal(null);
-  };
-  const del=id=>{setEstoque(es=>es.filter(x=>x.id!==id));showToast("Removido","warn");setModal(null);};
-  const ajustar=(id,delta)=>{
-    setEstoque(es=>es.map(m=>m.id===id?{...m,qty:Math.max(0,parseFloat(m.qty||0)+delta)}:m));
-  };
-  return(
-    <div style={S.page}>
-      <PHead title="📦 Estoque de Materiais" sub={`${(estoque||[]).length} item(s) · Valor total: ${fmtBRL(totalValue)}`}>
-        <PBtn onClick={()=>setModal({data:null})}>+ Novo Material</PBtn>
-      </PHead>
-      {lowStock.length>0&&(
-        <div style={{padding:"12px 18px",background:"rgba(248,113,113,0.08)",border:"1px solid rgba(248,113,113,0.25)",borderRadius:14,marginBottom:18,display:"flex",alignItems:"center",gap:14}}>
-          <span style={{fontSize:22}}>⚠️</span>
-          <div><div style={{fontSize:14,fontWeight:800,color:"#F87171"}}>{lowStock.length} material(ais) com estoque baixo</div>
-          <div style={{fontSize:12,color:"#64748B",marginTop:2}}>{lowStock.map(m=>m.name).join(", ")}</div></div>
-        </div>
-      )}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20}}>
-        <SCrd icon="📦" label="Itens cadastrados" val={(estoque||[]).length} accent={themeP}/>
-        <SCrd icon="⚠️" label="Estoque baixo" val={lowStock.length} accent="#F87171"/>
-        <SCrd icon="💰" label="Valor em estoque" val={fmtBRL(totalValue)} accent="#22D3A0"/>
-        <SCrd icon="📊" label="Categorias" val={new Set((estoque||[]).map(m=>m.category)).size} accent={themeA}/>
-      </div>
-      <div style={{marginBottom:14}}><input style={{...S.search,maxWidth:380}} placeholder="🔍 Buscar material…" value={q} onChange={e=>setQ(e.target.value)}/></div>
-      {filtered.length===0?(
-        <div style={{textAlign:"center",padding:56,color:"#475569"}}><div style={{fontSize:44,marginBottom:10}}>📦</div><div style={{fontWeight:600}}>Nenhum material cadastrado</div><div style={{fontSize:12,marginTop:6}}>Cadastre materiais para controlar seu estoque e custos</div></div>
-      ):(
-        <div style={{...S.card,padding:0,overflow:"hidden"}}>
-          <table style={S.tbl}>
-            <thead style={{background:"#0D1320"}}><tr>{["Material","Categoria","Estoque","Mín.","Custo unit.","Valor total","Ações"].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
-            <tbody>
-              {filtered.map(m=>{
-                const low=m.minQty&&parseFloat(m.qty)<=parseFloat(m.minQty);
-                return(
-                  <tr key={m.id} style={S.tr} className="trow">
-                    <td style={S.td}><div style={{fontWeight:600,color:"#F1F5F9"}}>{m.name}</div><div style={{fontSize:11,color:"#475569"}}>{m.obs||""}</div></td>
-                    <td style={{...S.td,fontSize:12,color:"#94A3B8"}}>{m.category||"—"}</td>
-                    <td style={S.td}>
-                      <div style={{display:"flex",alignItems:"center",gap:6}}>
-                        <button onClick={()=>ajustar(m.id,-1)} style={{width:22,height:22,borderRadius:6,background:"rgba(248,113,113,.1)",border:"1px solid rgba(248,113,113,.2)",cursor:"pointer",color:"#F87171",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"}}>−</button>
-                        <span style={{fontSize:14,fontWeight:700,color:low?"#F87171":"#22D3A0",minWidth:36,textAlign:"center"}}>{m.qty} {m.unit}</span>
-                        <button onClick={()=>ajustar(m.id,1)} style={{width:22,height:22,borderRadius:6,background:"rgba(34,211,160,.1)",border:"1px solid rgba(34,211,160,.2)",cursor:"pointer",color:"#22D3A0",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
-                        {low&&<span style={{fontSize:10,color:"#F87171",fontWeight:700}}>BAIXO</span>}
-                      </div>
-                    </td>
-                    <td style={{...S.td,fontSize:12,color:"#64748B"}}>{m.minQty||"—"} {m.unit}</td>
-                    <td style={{...S.td,color:themeP,fontWeight:700}}>{fmtBRL(m.cost||0)}</td>
-                    <td style={{...S.td,color:"#22D3A0",fontWeight:700}}>{fmtBRL((parseFloat(m.qty)||0)*(parseFloat(m.cost)||0))}</td>
-                    <td style={S.td}><div style={S.acts}>
-                      <TB c={themeP} t="Editar" onClick={()=>setModal({data:m})}>✏️</TB>
-                      <TB c="#F87171" t="Excluir" onClick={()=>del(m.id)}>🗑️</TB>
-                    </div></td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-      {modal&&<ModalEstoqueItem data={modal.data} onSave={save} onDelete={del} onClose={()=>setModal(null)} themeP={themeP} themeA={themeA}/>}
-    </div>
-  );
-}
-
-function ModalEstoqueItem({data,onSave,onDelete,onClose,themeP,themeA}){
-  const[f,sf]=useState(data||{name:"",category:"",qty:"0",unit:"un",cost:"0",minQty:"",obs:""});
-  const set=(k,v)=>sf(p=>({...p,[k]:v}));
-  const ok=f.name;
-  return(
-    <Overlay onClose={onClose}>
-      <div style={S.mhead}><div><div style={S.mtitle}>{data?"Editar Material":"Novo Material"}</div></div><XBtn onClick={onClose}/></div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-        <div style={{gridColumn:"1/-1"}}><FL label="Nome do material *"><input style={S.inp} value={f.name} onChange={e=>set("name",e.target.value)} placeholder="Ex: Cabo 2.5mm²"/></FL></div>
-        <FL label="Categoria"><input style={S.inp} value={f.category||""} onChange={e=>set("category",e.target.value)} placeholder="Ex: Elétrica, Hidráulica"/></FL>
-        <FL label="Unidade"><select style={S.sel} value={f.unit} onChange={e=>set("unit",e.target.value)}>{UNITS.map(u=><option key={u}>{u}</option>)}</select></FL>
-        <FL label="Quantidade atual"><input style={S.inp} type="number" min={0} step=".01" value={f.qty} onChange={e=>set("qty",e.target.value)}/></FL>
-        <FL label="Qtd. mínima (alerta)"><input style={S.inp} type="number" min={0} step=".01" value={f.minQty||""} onChange={e=>set("minQty",e.target.value)} placeholder="Opcional"/></FL>
-        <FL label="Custo unitário (R$)"><input style={S.inp} type="number" min={0} step=".01" value={f.cost} onChange={e=>set("cost",e.target.value)} placeholder="0.00"/></FL>
-        <div style={{gridColumn:"1/-1"}}><FL label="Observações"><input style={S.inp} value={f.obs||""} onChange={e=>set("obs",e.target.value)} placeholder="Ex: Fornecedor, marca…"/></FL></div>
-      </div>
-      <div style={{display:"flex",gap:8,marginTop:18,justifyContent:"space-between"}}>
-        <div style={{display:"flex",gap:8}}>
-          <button style={S.ghost} onClick={onClose}>Cancelar</button>
-          {data&&<button style={{...S.ghost,borderColor:"rgba(248,113,113,.3)",color:"#F87171"}} onClick={()=>onDelete(data.id)}>🗑️</button>}
-        </div>
-        <button style={{...S.prim,background:`linear-gradient(135deg,${themeP},${themeA})`,opacity:ok?1:.4}} onClick={()=>ok&&onSave(f)}>💾 Salvar</button>
-      </div>
-    </Overlay>
-  );
-}
-
-/* ═══ LIGHT MODE CSS ════════════════════════════════════════════ */
-const GCSS_LIGHT=`
-body,#root{background:#F1F5F9!important;}
-`;
 
 /* ═══ STYLES ════════════════════════════════════════════════════ */
 const S={

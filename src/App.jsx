@@ -583,6 +583,7 @@ function App({user,data,patch,themeP,themeA,onLogout}){
       {modal?.type==="client"      &&<ModalClient data={modal.data} onSave={saveClient} onDelete={delClient} onClose={()=>setModal(null)}/>}
       {modal?.type==="template"    &&<ModalTemplate data={modal.data} onSave={saveTpl} onDelete={delTpl} onClose={()=>setModal(null)}/>}
       {modal?.type==="preview"     &&<ModalPreview data={modal.data} profile={profile} onClose={()=>setModal(null)} sendWA={sendWA} themeP={themeP} themeA={themeA}/>}
+      {modal?.type==="pdfexport"   &&<ModalPDFExport data={modal.data} profile={profile} onClose={()=>setModal(null)} themeP={themeP} themeA={themeA}/>}
       {modal?.type==="recibo"      &&<ModalRecibo data={modal.data} profile={profile} onClose={()=>setModal(null)} themeP={themeP} themeA={themeA}/>}
       {modal?.type==="rating"      &&<ModalRating data={modal.data} onSave={r=>setBudgets(bs=>bs.map(b=>b.id===modal.data.id?{...b,rating:r}:b))} onClose={()=>setModal(null)} themeP={themeP}/>}
       {modal?.type==="agendamento" &&<ModalAgendamento data={modal.data} onSave={a=>setAgendamentos(ag=>[...(ag||[]),a])} onClose={()=>setModal(null)} themeP={themeP}/>}
@@ -716,6 +717,156 @@ function PageConfig({profile,setProfile,user,themeP,themeA,showToast}){
   );
 }
 
+
+/* ═══ EXPORTAR PDF ══════════════════════════════════════════════ */
+function exportBudgetPDF(data, profile, themeP, themeA) {
+  const sub = calcSub(data.items);
+  const disc = data.discount > 0 ? sub * data.discount / 100 : 0;
+  const taxAmt = data.tax > 0 ? (sub - disc) * data.tax / 100 : 0;
+
+  const rows = data.items.map((it, i) => `
+    <tr style="background:${i % 2 === 0 ? '#fff' : '#F8FAFC'}">
+      <td style="padding:9px 12px;border:1px solid #E2E8F0;font-size:13px">${it.desc}</td>
+      <td style="padding:9px 12px;border:1px solid #E2E8F0;font-size:13px;text-align:center">${it.qty}</td>
+      <td style="padding:9px 12px;border:1px solid #E2E8F0;font-size:13px;text-align:center">${it.unit}</td>
+      <td style="padding:9px 12px;border:1px solid #E2E8F0;font-size:13px;text-align:right">${fmtBRL(it.price)}</td>
+      <td style="padding:9px 12px;border:1px solid #E2E8F0;font-size:13px;font-weight:700;text-align:right;color:${themeP}">${fmtBRL((it.qty||0)*(it.price||0))}</td>
+    </tr>`).join("");
+
+  const logoHtml = profile.logo && profile.showLogo !== false
+    ? `<img src="${profile.logo}" style="height:48px;max-width:140px;object-fit:contain;margin-bottom:6px;display:block">`
+    : `<div style="width:44px;height:44px;border-radius:10px;background:linear-gradient(135deg,${themeP},${themeA});display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:6px">⚡</div>`;
+
+  const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Orçamento ${data.num} — ${profile.name || 'OrcaPro'}</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&display=swap');
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'DM Sans', Arial, sans-serif; background: #F1F5F9; color: #1E293B; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .page { max-width: 800px; margin: 0 auto; background: #fff; }
+    @media print {
+      body { background: #fff !important; }
+      .page { max-width: 100%; box-shadow: none; }
+      .no-print { display: none !important; }
+    }
+    @media screen { .page { margin: 20px auto; box-shadow: 0 4px 32px rgba(0,0,0,.12); } }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- HEADER -->
+  <div style="background:linear-gradient(135deg,${themeP},${themeA});padding:24px 32px;display:flex;justify-content:space-between;align-items:center">
+    <div style="display:flex;align-items:center;gap:14px">
+      ${logoHtml}
+      <div>
+        <div style="font-size:18px;font-weight:900;color:#fff">${profile.name || 'Sua Empresa'}</div>
+        ${profile.profession ? `<div style="font-size:12px;color:rgba(255,255,255,.85)">${profile.profession}</div>` : ''}
+        ${profile.tagline ? `<div style="font-size:11px;color:rgba(255,255,255,.7);font-style:italic">${profile.tagline}</div>` : ''}
+      </div>
+    </div>
+    <div style="text-align:right">
+      <div style="font-size:14px;font-weight:800;color:rgba(255,255,255,.95)">${data.num}</div>
+      <div style="font-size:12px;color:rgba(255,255,255,.75)">Data: ${data.date}</div>
+      <div style="margin-top:6px;display:inline-block;padding:3px 12px;border-radius:20px;background:rgba(255,255,255,.2);color:#fff;font-size:11px;font-weight:700">${STATUS[data.status]?.icon || ''} ${STATUS[data.status]?.label || ''}</div>
+    </div>
+  </div>
+
+  ${profile.headerNote ? `<div style="background:${themeP}18;padding:8px 32px;font-size:11px;color:${themeP};font-weight:500;border-bottom:1px solid ${themeP}30">${profile.headerNote}</div>` : ''}
+
+  <!-- BODY -->
+  <div style="padding:28px 32px">
+
+    <!-- CLIENT + SERVICE INFO -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:22px">
+      <div style="padding:14px 18px;background:#F8FAFC;border-radius:12px;border-left:4px solid ${themeP}">
+        <div style="font-size:10px;color:#94A3B8;font-weight:700;text-transform:uppercase;letter-spacing:.7px;margin-bottom:6px">Cliente</div>
+        <div style="font-size:16px;font-weight:800;color:#1E293B">${data.clientName}</div>
+        ${data.phone ? `<div style="font-size:12px;color:#64748B;margin-top:3px">📱 ${data.phone}</div>` : ''}
+        ${data.email ? `<div style="font-size:12px;color:#64748B">✉️ ${data.email}</div>` : ''}
+      </div>
+      <div style="padding:14px 18px;background:#F8FAFC;border-radius:12px;border-left:4px solid ${themeA}">
+        <div style="font-size:10px;color:#94A3B8;font-weight:700;text-transform:uppercase;letter-spacing:.7px;margin-bottom:6px">Serviço</div>
+        <div style="font-size:15px;font-weight:800;color:#1E293B">${data.title}${data.urgent ? ' 🚨' : ''}</div>
+        <div style="font-size:12px;color:#64748B;margin-top:3px">${data.category} · Válido ${data.validity} dias</div>
+        ${data.warrantyDays > 0 ? `<div style="font-size:11px;color:#059669;margin-top:3px">🛡️ Garantia: ${data.warrantyDays} dias</div>` : ''}
+      </div>
+    </div>
+
+    ${data.desc ? `<div style="padding:10px 16px;background:${themeP}0D;border-radius:10px;border-left:3px solid ${themeP};font-size:12px;color:#475569;margin-bottom:18px;font-style:italic">${data.desc}</div>` : ''}
+
+    <!-- ITEMS TABLE -->
+    <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+      <thead>
+        <tr style="background:${themeP}18">
+          <th style="padding:10px 12px;font-size:11px;font-weight:700;color:${themeP};text-align:left;border:1px solid ${themeP}25">Descrição</th>
+          <th style="padding:10px 12px;font-size:11px;font-weight:700;color:${themeP};text-align:center;border:1px solid ${themeP}25;width:60px">Qtd</th>
+          <th style="padding:10px 12px;font-size:11px;font-weight:700;color:${themeP};text-align:center;border:1px solid ${themeP}25;width:60px">Un.</th>
+          <th style="padding:10px 12px;font-size:11px;font-weight:700;color:${themeP};text-align:right;border:1px solid ${themeP}25;width:100px">Unit.</th>
+          <th style="padding:10px 12px;font-size:11px;font-weight:700;color:${themeP};text-align:right;border:1px solid ${themeP}25;width:110px">Total</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+
+    <!-- TOTALS -->
+    <div style="display:flex;justify-content:flex-end;margin-bottom:18px">
+      <div style="min-width:260px">
+        ${data.discount > 0 ? `
+        <div style="display:flex;justify-content:space-between;font-size:13px;color:#64748B;margin-bottom:5px"><span>Subtotal</span><span>${fmtBRL(sub)}</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;color:#EF4444;margin-bottom:5px"><span>Desconto (${data.discount}%)</span><span>-${fmtBRL(disc)}</span></div>` : ''}
+        ${data.tax > 0 ? `<div style="display:flex;justify-content:space-between;font-size:13px;color:#3B82F6;margin-bottom:5px"><span>Impostos (${data.tax}%)</span><span>+${fmtBRL(taxAmt)}</span></div>` : ''}
+        <div style="display:flex;justify-content:space-between;font-weight:900;font-size:22px;color:${themeP};padding-top:10px;border-top:2px solid ${themeP}50;margin-top:4px"><span>TOTAL</span><span>${fmtBRL(data.total)}</span></div>
+        ${data.paymentMethod ? `<div style="font-size:12px;color:#64748B;text-align:right;margin-top:4px">via ${data.paymentMethod}</div>` : ''}
+      </div>
+    </div>
+
+    <!-- BADGES -->
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+      ${data.urgent ? `<span style="padding:4px 12px;background:#FEF3C7;border-radius:20px;font-size:11px;font-weight:700;color:#92400E">🚨 Serviço urgente</span>` : ''}
+      ${data.warrantyDays > 0 ? `<span style="padding:4px 12px;background:#DCFCE7;border-radius:20px;font-size:11px;font-weight:700;color:#166534">🛡️ Garantia: ${data.warrantyDays} dias</span>` : ''}
+    </div>
+
+    ${data.notes ? `<div style="margin-bottom:14px;padding:10px 16px;background:#FFFBEB;border-radius:10px;border:1px solid #FDE68A;font-size:12px;color:#92400E">📝 ${data.notes}</div>` : ''}
+    ${profile.paymentTerms ? `<div style="margin-bottom:14px;padding:10px 16px;background:#F0FDF4;border-radius:10px;border:1px solid #BBF7D0;font-size:12px;color:#166534">💳 ${profile.paymentTerms}</div>` : ''}
+    ${profile.pixKey ? `<div style="margin-bottom:14px;padding:10px 16px;background:#EFF6FF;border-radius:10px;border:1px solid #BFDBFE;font-size:12px;color:#1E40AF">🔑 PIX: <b>${profile.pixKey}</b>${profile.bank ? ` · ${profile.bank}` : ''}</div>` : ''}
+
+    <!-- FOOTER -->
+    <div style="margin-top:24px;padding-top:16px;border-top:1px solid #E2E8F0;display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;gap:12px">
+      <div>
+        ${profile.footerNote ? `<div style="font-size:11px;color:#94A3B8;margin-bottom:6px;font-style:italic">${profile.footerNote}</div>` : ''}
+        <div style="display:flex;gap:14px;flex-wrap:wrap">
+          ${profile.phone ? `<span style="font-size:11px;color:#64748B">📱 ${profile.phone}</span>` : ''}
+          ${profile.email ? `<span style="font-size:11px;color:#64748B">✉️ ${profile.email}</span>` : ''}
+          ${profile.website ? `<span style="font-size:11px;color:${themeP}">🌐 ${profile.website}</span>` : ''}
+          ${profile.instagram ? `<span style="font-size:11px;color:${themeP}">📸 ${profile.instagram}</span>` : ''}
+          ${profile.crea ? `<span style="font-size:11px;color:#64748B">📋 ${profile.crea}</span>` : ''}
+        </div>
+      </div>
+      <div style="text-align:right;font-size:12px;color:#94A3B8;font-style:italic">${profile.signOff || ''}</div>
+    </div>
+
+    <!-- VALIDITY -->
+    <div style="margin-top:16px;text-align:center;font-size:11px;color:#94A3B8;padding:8px;border:1px dashed #E2E8F0;border-radius:8px">
+      Orçamento válido por ${data.validity} dias a partir de ${data.date} · Gerado pelo OrcaPro
+    </div>
+
+  </div>
+</div>
+
+<script>window.onload = function(){ window.print(); }<\/script>
+</body>
+</html>`;
+
+  const w = window.open("", "_blank");
+  if (!w) { alert("Permita pop-ups para exportar o PDF"); return; }
+  w.document.write(html);
+  w.document.close();
+}
+
 /* ═══ MODAL PREVIEW ════════════════════════════════════════════ */
 function ModalPreview({data,profile,onClose,sendWA,themeP,themeA}){
   const sub=calcSub(data.items);
@@ -758,7 +909,7 @@ function ModalPreview({data,profile,onClose,sendWA,themeP,themeA}){
           </div>
         </div>
       </div>
-      <div style={{display:"flex",gap:8,marginTop:14,justifyContent:"flex-end"}}><button style={S.ghost} onClick={onClose}>Fechar</button><button style={{...S.prim,background:"#25D366",color:"#fff"}} onClick={()=>{sendWA(data);onClose();}}>📱 Enviar via WhatsApp</button></div>
+      <div style={{display:"flex",gap:8,marginTop:14,justifyContent:"flex-end",flexWrap:"wrap"}}><button style={S.ghost} onClick={onClose}>Fechar</button><button style={{...S.prim,background:"linear-gradient(135deg,#EF4444,#DC2626)",color:"#fff"}} onClick={()=>exportBudgetPDF(data,profile,themeP,themeA)}>📄 Exportar PDF</button><button style={{...S.prim,background:"#25D366",color:"#fff"}} onClick={()=>{sendWA(data);onClose();}}>📱 Enviar via WhatsApp</button></div>
     </Overlay>
   );
 }
@@ -1261,6 +1412,73 @@ function ModalBudget({data,clients,templates,onSave,onClose,nextNum,userId,theme
   );
 }
 
+
+/* ═══ MODAL PDF EXPORT ══════════════════════════════════════════ */
+function ModalPDFExport({data,profile,onClose,themeP,themeA}){
+  const[generating,setGenerating]=useState(false);
+
+  const doExport=()=>{
+    setGenerating(true);
+    setTimeout(()=>{
+      exportBudgetPDF(data,profile,themeP,themeA);
+      setGenerating(false);
+    },300);
+  };
+
+  return(
+    <Overlay onClose={onClose}>
+      <div style={S.mhead}>
+        <div><div style={S.mtitle}>📄 Exportar PDF</div><div style={S.msub}>{data.num} · {data.clientName}</div></div>
+        <XBtn onClick={onClose}/>
+      </div>
+
+      {/* Preview miniatura */}
+      <div style={{background:"#F8FAFC",borderRadius:12,padding:16,marginBottom:16,border:"1px solid #E2E8F0"}}>
+        <div style={{background:`linear-gradient(135deg,${themeP},${themeA})`,borderRadius:8,padding:"12px 16px",marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div>
+            <div style={{fontSize:13,fontWeight:800,color:"#fff"}}>{profile.name||"Sua Empresa"}</div>
+            {profile.profession&&<div style={{fontSize:10,color:"rgba(255,255,255,.8)"}}>{profile.profession}</div>}
+          </div>
+          <div style={{textAlign:"right"}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#fff"}}>{data.num}</div>
+            <div style={{fontSize:10,color:"rgba(255,255,255,.7)"}}>{data.date}</div>
+          </div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+          <div style={{padding:"8px 10px",background:"#fff",borderRadius:8,borderLeft:`3px solid ${themeP}`}}>
+            <div style={{fontSize:9,color:"#94A3B8",fontWeight:700,textTransform:"uppercase",marginBottom:3}}>Cliente</div>
+            <div style={{fontSize:12,fontWeight:700,color:"#1E293B"}}>{data.clientName}</div>
+          </div>
+          <div style={{padding:"8px 10px",background:"#fff",borderRadius:8,borderLeft:`3px solid ${themeA}`}}>
+            <div style={{fontSize:9,color:"#94A3B8",fontWeight:700,textTransform:"uppercase",marginBottom:3}}>Serviço</div>
+            <div style={{fontSize:11,fontWeight:700,color:"#1E293B",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{data.title}</div>
+          </div>
+        </div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 10px",background:"#fff",borderRadius:8,border:`1px solid ${themeP}20`}}>
+          <span style={{fontSize:11,color:"#64748B"}}>{data.items.length} item(s) · {data.category}</span>
+          <span style={{fontSize:16,fontWeight:900,color:themeP}}>{fmtBRL(data.total)}</span>
+        </div>
+      </div>
+
+      <div style={{padding:"10px 14px",background:"rgba(34,211,160,0.06)",border:"1px solid rgba(34,211,160,0.2)",borderRadius:10,marginBottom:16,fontSize:12,color:"#64748B",lineHeight:1.6}}>
+        <b style={{color:"#22D3A0"}}>Como funciona:</b><br/>
+        O orçamento abre em uma nova aba já formatado. Na janela que abrir, escolha <b style={{color:"#CBD5E1"}}>Salvar como PDF</b> no diálogo de impressão do seu navegador.
+      </div>
+
+      <div style={{display:"flex",gap:8}}>
+        <button style={S.ghost} onClick={onClose}>Cancelar</button>
+        <button
+          style={{...S.prim,flex:1,background:"linear-gradient(135deg,#EF4444,#DC2626)",fontSize:14,padding:"11px",display:"flex",alignItems:"center",justifyContent:"center",gap:8,opacity:generating?0.7:1}}
+          onClick={doExport}
+          disabled={generating}
+        >
+          {generating?<><span className="spin">⏳</span> Gerando...</>:<><span>📄</span> Gerar e Baixar PDF</>}
+        </button>
+      </div>
+    </Overlay>
+  );
+}
+
 function ModalDetail({data,onClose,setStatus,sendWA,onEdit,onDelete,themeP,setModal}){
   const[del,setDel]=useState(false);const sub=calcSub(data.items);const dl=daysLeft(data.date,data.validity);
   return(
@@ -1289,6 +1507,7 @@ function ModalDetail({data,onClose,setStatus,sendWA,onEdit,onDelete,themeP,setMo
       <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
         <button style={{...S.prim,flex:1,background:"#25D366",color:"#fff"}} onClick={()=>sendWA(data)}>📱 WhatsApp</button>
         <button style={{...S.ghost,padding:"8px 12px"}} onClick={()=>setModal({type:"preview",data})}>👁️ Preview</button>
+        <button style={{...S.ghost,padding:"8px 12px",borderColor:"rgba(239,68,68,.3)",color:"#EF4444"}} onClick={()=>setModal({type:"pdfexport",data})}>📄 PDF</button>
         <button style={{...S.ghost,padding:"8px 12px"}} onClick={()=>setModal({type:"agendamento",data})}>📅 Agendar</button>
         {data.status==="aprovado"&&<React.Fragment>
           <button style={{...S.ghost,padding:"8px 12px"}} onClick={()=>setModal({type:"recibo",data})}>🧾 Recibo</button>

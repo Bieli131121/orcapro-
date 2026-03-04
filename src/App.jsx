@@ -75,16 +75,19 @@ const seedData = u0 => ({
 /* ═══ STORAGE ══════════════════════════════════════════════════════ */
 function useStorage(key,fallback,shared=false){
   const[val,setVal]=useState(null);const[loading,setL]=useState(true);
-  const valRef=useRef(val);valRef.current=val;
+  const valRef=useRef(val);
+  // Keep valRef always in sync
+  useEffect(()=>{valRef.current=val;},[val]);
   useEffect(()=>{
-    try{const raw=localStorage.getItem(key);setVal(raw?JSON.parse(raw):fallback);}
+    try{const raw=localStorage.getItem(key);const parsed=raw?JSON.parse(raw):fallback;valRef.current=parsed;setVal(parsed);}
     catch{setVal(fallback);}
     setL(false);
   },[key]); //eslint-disable-line
   const save=useCallback(async nv=>{
     const v=typeof nv==="function"?nv(valRef.current):nv;
+    valRef.current=v;          // update ref BEFORE setVal to avoid stale closure
     setVal(v);
-    try{localStorage.setItem(key,JSON.stringify(v));}catch{}
+    try{localStorage.setItem(key,JSON.stringify(v));}catch(e){console.error("storage:",key,e);}
   },[key]);
   return[val,save,loading];
 }
@@ -416,9 +419,21 @@ function ModalUserForm({data,onSave,onClose}){
 /* ═══ APP SHELL ══════════════════════════════════════════════════ */
 function AppShell({user,onLogout}){
   const[data,setData,loadD]=useStorage(`orc6:data:${user.id}`,null,false);
-  useEffect(()=>{if(!loadD&&(data===null||data===undefined))setData(seedData(user.id));},[loadD,data]); //eslint-disable-line
+  const seeded=useRef(false);
+  useEffect(()=>{
+    if(!loadD&&(data===null||data===undefined)&&!seeded.current){
+      seeded.current=true;
+      setData(seedData(user.id));
+    }
+  },[loadD,data,setData,user.id]);
+
+  // patch is stable: useCallback with setData dep only
+  const patch=useCallback(k=>fn=>setData(d=>{
+    const base=d||(seedData(user.id));
+    return{...base,[k]:typeof fn==="function"?fn(base[k]):fn};
+  }),[setData,user.id]);
+
   if(loadD||data===null||data===undefined)return<Splash user={user}/>;
-  const patch=k=>fn=>setData(d=>({...d,[k]:typeof fn==="function"?fn(d[k]):fn}));
   const profile={...BLANK_PROFILE,...(data.profile||{})};
   const theme=THEMES.find(t=>t.id===profile.themeId)||THEMES[0];
   const P=profile.primaryColor||theme.primary;const A=profile.accentColor||theme.accent;
@@ -428,23 +443,30 @@ function AppShell({user,onLogout}){
 /* ═══ APP ══════════════════════════════════════════════════════════ */
 function App({user,data,patch,themeP,themeA,onLogout}){
   const{budgets=[],clients=[],templates=[],profile={},activity=[],agendamentos=[]}=data;
-  const setBudgets=patch("budgets");const setClients=patch("clients");
-  const setTemplates=patch("templates");const setProfile=patch("profile");
-  const setActivity=patch("activity");const setAgendamentos=patch("agendamentos");
+  // Memoize each setter so they're stable across renders
+  const setBudgets  =useMemo(()=>patch("budgets"),   [patch]);
+  const setClients  =useMemo(()=>patch("clients"),   [patch]);
+  const setTemplates=useMemo(()=>patch("templates"), [patch]);
+  const setProfile  =useMemo(()=>patch("profile"),   [patch]);
+  const setActivity =useMemo(()=>patch("activity"),  [patch]);
+  const setAgendamentos=useMemo(()=>patch("agendamentos"),[patch]);
   const[page,setPage]=useState("dashboard");
   const[modal,setModal]=useState(null);const[toast,setToast]=useState(null);
   const[filter,setFilter]=useState({status:"todos",cat:"todas",q:"",sort:"newest"});
   const[sideOpen,setSideOpen]=useState(true);
   const[orcCounter,setOrcCounter]=useStorage(`orc6:counter:${user.id}`,1,false);
   const showToast=(msg,type="ok")=>{setToast({msg,type});setTimeout(()=>setToast(null),3000);};
-  const addAct=desc=>setActivity(a=>[{id:uid(),desc,ts:new Date().toLocaleString("pt-BR")},...(a||[])].slice(0,50));
+  const setActivityRef=useRef(setActivity);setActivityRef.current=setActivity;
+  const addAct=useCallback(desc=>setActivityRef.current(a=>[{id:uid(),desc,ts:new Date().toLocaleString("pt-BR")},...(a||[])].slice(0,50)),[]);
   const nextNum=useMemo(()=>`ORC-${String(orcCounter||1).padStart(3,"0")}`,[orcCounter]);
   const budgetsRef=useRef(budgets);budgetsRef.current=budgets;
+  const setBudgetsRef=useRef(setBudgets);setBudgetsRef.current=setBudgets;
   useEffect(()=>{
+    // Run once on mount and whenever budgets change length
     const has=budgetsRef.current.some(b=>(b.status==="pendente"||b.status==="enviado")&&daysLeft(b.date,b.validity)<0);
     if(!has)return;
-    setBudgets(bs=>bs.map(b=>(b.status==="pendente"||b.status==="enviado")&&daysLeft(b.date,b.validity)<0?{...b,status:"expirado"}:b));
-  },[setBudgets]);
+    setBudgetsRef.current(bs=>bs.map(b=>(b.status==="pendente"||b.status==="enviado")&&daysLeft(b.date,b.validity)<0?{...b,status:"expirado"}:b));
+  },[budgets.length]); // only re-check when number of budgets changes
 
   const saveBudget=f=>{
     const total=calcTot(f.items,f.discount,f.tax);

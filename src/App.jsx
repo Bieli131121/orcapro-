@@ -1,4 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  "https://oehdkvelzjaahddsuivz.supabase.co",
+  "sb_publishable_jGDj5i2XTvo2ADwGcUzfSg_xliD2TiP"
+);
 
 const CATS   = ["Elétrica","Hidráulica","Marcenaria","Pintura","Mecânica","Informática","Limpeza","Jardinagem","Climatização","Outro"];
 const UNITS  = ["un","m","m²","m³","kg","l","serv","hr","dia","kit","cx","pc","vb"];
@@ -72,35 +78,68 @@ const seedData = u0 => ({
   activity:[],
 });
 
-/* ═══ STORAGE ══════════════════════════════════════════════════════ */
-function useStorage(key,fallback,shared=false){
-  const[val,setVal]=useState(null);const[loading,setL]=useState(true);
+/* ═══ STORAGE (localStorage fallback mantido para counter) ══════════════════════════════════════════════════════ */
+function useStorage(key,fallback){
+  const[val,setVal]=useState(()=>{try{const r=localStorage.getItem(key);return r?JSON.parse(r):fallback;}catch{return fallback;}});
   const valRef=useRef(val);
-  // Keep valRef always in sync
   useEffect(()=>{valRef.current=val;},[val]);
-  useEffect(()=>{
-    try{const raw=localStorage.getItem(key);const parsed=raw?JSON.parse(raw):fallback;valRef.current=parsed;setVal(parsed);}
-    catch{setVal(fallback);}
-    setL(false);
-  },[key]); //eslint-disable-line
   const save=useCallback(async nv=>{
     const v=typeof nv==="function"?nv(valRef.current):nv;
-    valRef.current=v;          // update ref BEFORE setVal to avoid stale closure
-    setVal(v);
+    valRef.current=v;setVal(v);
     try{localStorage.setItem(key,JSON.stringify(v));}catch(e){console.error("storage:",key,e);}
   },[key]);
-  return[val,save,loading];
+  return[val,save,false];
 }
+
+/* ═══ SUPABASE DB HELPERS ══════════════════════════════════════════ */
+async function dbGetUsers(){const{data,error}=await supabase.from("users").select("*").order("created_at",{ascending:false});if(error){console.error(error);return[];}return data;}
+async function dbGetUser(login){const{data}=await supabase.from("users").select("*").ilike("login",login).eq("active",true).maybeSingle();return data;}
+async function dbCreateUser(u){const{data,error}=await supabase.from("users").insert([u]).select().single();if(error){console.error(error);return null;}return data;}
+async function dbUpdateUser(id,fields){const{data,error}=await supabase.from("users").update(fields).eq("id",id).select().single();if(error){console.error(error);return null;}return data;}
+async function dbDeleteUser(id){await supabase.from("users").delete().eq("id",id);}
+async function dbGetClients(userId){const{data}=await supabase.from("clients").select("*").eq("user_id",userId).order("name");return data||[];}
+async function dbSaveClient(c){if(c.id&&!c._new){const{data}=await supabase.from("clients").update(c).eq("id",c.id).select().single();return data;}const{data}=await supabase.from("clients").insert([c]).select().single();return data;}
+async function dbDeleteClient(id){await supabase.from("clients").delete().eq("id",id);}
+async function dbGetBudgets(userId){const{data}=await supabase.from("budgets").select("*").eq("user_id",userId).order("created_at",{ascending:false});return data||[];}
+async function dbSaveBudget(b){if(b.id&&!b._new){const{id,_new,...fields}=b;const{data}=await supabase.from("budgets").update(fields).eq("id",id).select().single();return data;}const{_new,...fields}=b;const{data}=await supabase.from("budgets").insert([fields]).select().single();return data;}
+async function dbDeleteBudget(id){await supabase.from("budgets").delete().eq("id",id);}
+async function dbGetAgendamentos(userId){const{data}=await supabase.from("agendamentos").select("*").eq("user_id",userId).order("date");return data||[];}
+async function dbSaveAgendamento(a){if(a.id&&!a._new){const{id,_new,...fields}=a;const{data}=await supabase.from("agendamentos").update(fields).eq("id",id).select().single();return data;}const{_new,...fields}=a;const{data}=await supabase.from("agendamentos").insert([fields]).select().single();return data;}
+async function dbDeleteAgendamento(id){await supabase.from("agendamentos").delete().eq("id",id);}
+async function dbGetTemplates(userId){const{data}=await supabase.from("templates").select("*").eq("user_id",userId).order("name");return data||[];}
+async function dbSaveTemplate(t){if(t.id&&!t._new){const{id,_new,...fields}=t;const{data}=await supabase.from("templates").update(fields).eq("id",id).select().single();return data;}const{_new,...fields}=t;const{data}=await supabase.from("templates").insert([fields]).select().single();return data;}
+async function dbDeleteTemplate(id){await supabase.from("templates").delete().eq("id",id);}
+async function dbGetProfile(userId){const{data}=await supabase.from("profiles").select("*").eq("user_id",userId).maybeSingle();return data;}
+async function dbSaveProfile(userId,fields){const{data}=await supabase.from("profiles").upsert({...fields,user_id:userId,updated_at:new Date().toISOString()},{onConflict:"user_id"}).select().single();return data;}
+async function dbLogActivity(userId,action,detail=""){await supabase.from("activity").insert([{user_id:userId,action,detail}]);}
+async function dbGetActivity(userId){const{data}=await supabase.from("activity").select("*").eq("user_id",userId).order("created_at",{ascending:false}).limit(50);return(data||[]).map(a=>({id:a.id,desc:a.action+(a.detail?` — ${a.detail}`:""),ts:new Date(a.created_at).toLocaleString("pt-BR")}));}
 
 /* ═══ ROOT ══════════════════════════════════════════════════════════ */
 export default function Root(){
-  const[users,setUsers,lu]=useStorage("orc6:users",[],true);
-  const[session,setSession,ls]=useStorage("orc6:session",null,false);
-  if(lu||ls)return<Splash/>;
+  const[users,setUsers]=useState([]);
+  const[session,setSession]=useState(()=>{try{return JSON.parse(localStorage.getItem("orc6:session"));}catch{return null;}});
+  const[loading,setLoading]=useState(true);
+
+  // Carrega lista de usuários do banco
+  useEffect(()=>{
+    dbGetUsers().then(data=>{setUsers(data);setLoading(false);});
+  },[]);
+
+  if(loading)return<Splash/>;
+
   const isAdmin=session?.userId===ADMIN.id;
   const currentUser=isAdmin?ADMIN:(users||[]).find(u=>u.id===session?.userId);
-  const login=async u=>setSession({userId:u.id,ts:Date.now()});
-  const logout=async()=>setSession(null);
+
+  const login=async u=>{
+    const s={userId:u.id,ts:Date.now()};
+    localStorage.setItem("orc6:session",JSON.stringify(s));
+    setSession(s);
+  };
+  const logout=async()=>{
+    localStorage.removeItem("orc6:session");
+    setSession(null);
+  };
+
   if(!currentUser)return<React.Fragment><style>{GCSS}</style><LoginScreen users={users||[]} onLogin={login}/></React.Fragment>;
   if(isAdmin)return<React.Fragment><style>{GCSS}</style><AdminPanel users={users||[]} setUsers={setUsers} onLogout={logout}/></React.Fragment>;
   return<React.Fragment><style>{GCSS}</style><AppShell user={currentUser} users={users} setUsers={setUsers} onLogout={logout}/></React.Fragment>;
@@ -152,52 +191,70 @@ function LoginScreen({users,onLogin}){
 
 /* ═══ ADMIN ══════════════════════════════════════════════════════════ */
 function AdminPanel({users,setUsers,onLogout}){
-  const[adminProfile,setAdminProfile]=useStorage("orc6:adminProfile",{name:"Analua",email:"analua@orcapro.com",phone:"",city:"",logo:"",tagline:"Administradora da plataforma"},false);
+  const[adminProfile,setAdminProfile]=useStorage("orc6:adminProfile",{name:"Analua",email:"analua@orcapro.com",phone:"",city:"",logo:"",tagline:"Administradora da plataforma"});
   const[modal,setModal]=useState(null);const[toast,setToast]=useState(null);
   const[search,setSearch]=useState("");const[tab,setTab]=useState("mensalidades");
   const[bilFilter,setBilFilter]=useState("todos");const adminFileRef=useRef();
   const showToast=(msg,type="ok")=>{setToast({msg,type});setTimeout(()=>setToast(null),3200);};
   const addMonths=(d,m)=>{const dt=new Date(d);dt.setMonth(dt.getMonth()+m);return dt.toISOString().split("T")[0];};
+
   const saveUser=async f=>{
     if(!f.id){
       if((users||[]).find(u=>u.login?.toLowerCase()===f.login?.toLowerCase())){showToast("Login já existe","warn");return;}
       if(f.email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(f.email)){showToast("E-mail inválido","warn");return;}
       const novaData=today();const venc=addMonths(novaData,1);
       const passwordHash=f.password?await hashPassword(f.password):"";
-      await setUsers(us=>[...(us||[]),{...f,id:uid(),password:passwordHash,createdAt:novaData,active:true,billingStatus:"em_dia",lastPayment:novaData,nextDue:venc,payHistory:[]}]);
+      const novo={name:f.name,login:f.login,email:f.email,phone:f.phone,password:passwordHash,profession:f.profession,plan:f.plan||"pro",active:true,billing_status:"em_dia",last_payment:novaData,next_due:venc,pay_history:[]};
+      const criado=await dbCreateUser(novo);
+      if(!criado){showToast("Erro ao criar usuário","warn");return;}
+      setUsers(us=>[criado,...(us||[])]);
       showToast(`Conta criada: ${f.name} ✓`);
     }else{
       let upd={...f};
       if(f._passwordChanged&&f.password){upd={...f,password:await hashPassword(f.password),_passwordChanged:undefined};}
-      await setUsers(us=>us.map(u=>u.id===f.id?upd:u));showToast("Salvo ✓");
+      const atualizado=await dbUpdateUser(f.id,upd);
+      if(!atualizado){showToast("Erro ao salvar","warn");return;}
+      setUsers(us=>us.map(u=>u.id===f.id?atualizado:u));showToast("Salvo ✓");
     }
     setModal(null);
   };
-  const toggleActive=async id=>{await setUsers(us=>us.map(u=>u.id===id?{...u,active:!u.active}:u));showToast("Status alterado");};
-  const delUser=async id=>{await setUsers(us=>us.filter(u=>u.id!==id));showToast("Removido","warn");setModal(null);};
+  const toggleActive=async id=>{
+    const u=(users||[]).find(x=>x.id===id);if(!u)return;
+    const atualizado=await dbUpdateUser(id,{active:!u.active});
+    if(atualizado)setUsers(us=>us.map(x=>x.id===id?atualizado:x));
+    showToast("Status alterado");
+  };
+  const delUser=async id=>{
+    await dbDeleteUser(id);
+    setUsers(us=>us.filter(u=>u.id!==id));showToast("Removido","warn");setModal(null);
+  };
   const registerPayment=async id=>{
     const nd=today();const venc=addMonths(nd,1);
-    await setUsers(us=>us.map(u=>{
-      if(u.id!==id)return u;
-      const hist=[...(u.payHistory||[]),{date:nd,amount:PLANS[u.plan||"pro"]?.price||49,status:"pago"}];
-      return{...u,billingStatus:"em_dia",lastPayment:nd,nextDue:venc,payHistory:hist,active:true};
-    }));showToast("Pagamento registrado ✓");
+    const u=(users||[]).find(x=>x.id===id);if(!u)return;
+    const hist=[...(u.pay_history||[]),{date:nd,amount:PLANS[u.plan||"pro"]?.price||49,status:"pago"}];
+    const atualizado=await dbUpdateUser(id,{billing_status:"em_dia",last_payment:nd,next_due:venc,pay_history:hist,active:true});
+    if(atualizado)setUsers(us=>us.map(x=>x.id===id?atualizado:x));
+    showToast("Pagamento registrado ✓");
   };
-  const markOverdue=async id=>{await setUsers(us=>us.map(u=>u.id===id?{...u,billingStatus:"atrasado"}:u));showToast("Marcado como atrasado","warn");};
+  const markOverdue=async id=>{
+    const atualizado=await dbUpdateUser(id,{billing_status:"atrasado"});
+    if(atualizado)setUsers(us=>us.map(x=>x.id===id?atualizado:x));
+    showToast("Marcado como atrasado","warn");
+  };
   const sendWAReminder=u=>{
     const plan=PLANS[u.plan||"pro"];
-    const msg=`Olá *${u.name}*! 👋\n\nPassando para lembrar que sua mensalidade do *OrcaPro* (Plano ${plan.label} — R$${plan.price}/mês) vence em *${u.nextDue||"breve"}*.\n\nEfetue o pagamento via PIX para continuar usando normalmente.\n\nQualquer dúvida, estou à disposição! 😊\n\n— ${adminProfile?.name||"Analua"} · OrcaPro`;
+    const msg=`Olá *${u.name}*! 👋\n\nPassando para lembrar que sua mensalidade do *OrcaPro* (Plano ${plan.label} — R$${plan.price}/mês) vence em *${u.next_due||"breve"}*.\n\nEfetue o pagamento via PIX para continuar usando normalmente.\n\nQualquer dúvida, estou à disposição! 😊\n\n— ${adminProfile?.name||"Analua"} · OrcaPro`;
     window.open(`https://wa.me/55${(u.phone||"").replace(/\D/g,"")}?text=${encodeURIComponent(msg)}`,"_blank");
     showToast("Lembrete enviado 📱");
   };
   const handleAdminLogo=async e=>{const file=e.target.files?.[0];if(!file)return;if(file.size>2*1024*1024){showToast("Máx. 2MB","warn");return;}const b64=await readFile(file);setAdminProfile(p=>({...p,logo:b64}));showToast("Foto atualizada ✓");};
   const filtered=(users||[]).filter(u=>[u.name,u.login,u.email].some(v=>v?.toLowerCase().includes(search.toLowerCase())));
-  const stats={total:(users||[]).length,active:(users||[]).filter(u=>u.active!==false).length,emDia:(users||[]).filter(u=>!u.billingStatus||u.billingStatus==="em_dia").length,atrasado:(users||[]).filter(u=>u.billingStatus==="atrasado").length,receita:(users||[]).filter(u=>u.active!==false).reduce((s,u)=>s+(PLANS[u.plan||"pro"]?.price||49),0)};
+  const stats={total:(users||[]).length,active:(users||[]).filter(u=>u.active!==false).length,emDia:(users||[]).filter(u=>!u.billing_status||u.billing_status==="em_dia").length,atrasado:(users||[]).filter(u=>u.billing_status==="atrasado").length,receita:(users||[]).filter(u=>u.active!==false).reduce((s,u)=>s+(PLANS[u.plan||"pro"]?.price||49),0)};
   const bilFiltered=useMemo(()=>{
     let r=[...(users||[])];
-    if(bilFilter==="em_dia")r=r.filter(u=>!u.billingStatus||u.billingStatus==="em_dia");
-    if(bilFilter==="atrasado")r=r.filter(u=>u.billingStatus==="atrasado");
-    if(bilFilter==="vencendo"){const h=new Date();r=r.filter(u=>{if(!u.nextDue)return false;const d=Math.ceil((new Date(u.nextDue)-h)/86400000);return d>=0&&d<=5;});}
+    if(bilFilter==="em_dia")r=r.filter(u=>!u.billing_status||u.billing_status==="em_dia");
+    if(bilFilter==="atrasado")r=r.filter(u=>u.billing_status==="atrasado");
+    if(bilFilter==="vencendo"){const h=new Date();r=r.filter(u=>{if(!u.next_due)return false;const d=Math.ceil((new Date(u.next_due)-h)/86400000);return d>=0&&d<=5;});}
     return r.filter(u=>[u.name,u.login,u.email].some(v=>v?.toLowerCase().includes(search.toLowerCase())));
   },[users,bilFilter,search]);
   const adminName=adminProfile?.name||"Analua";
@@ -235,7 +292,7 @@ function AdminPanel({users,setUsers,onLogout}){
               <SCrd icon="👥" label="Total" val={stats.total} accent="#818CF8"/>
               <SCrd icon="✅" label="Em dia" val={stats.emDia} accent="#22D3A0"/>
               <SCrd icon="⚠️" label="Atrasados" val={stats.atrasado} accent="#F87171"/>
-              <SCrd icon="🔔" label="Vencendo (5d)" val={(users||[]).filter(u=>{if(!u.nextDue)return false;const d=Math.ceil((new Date(u.nextDue)-new Date())/86400000);return d>=0&&d<=5;}).length} accent="#F59E0B"/>
+              <SCrd icon="🔔" label="Vencendo (5d)" val={(users||[]).filter(u=>{if(!u.next_due)return false;const d=Math.ceil((new Date(u.next_due)-new Date())/86400000);return d>=0&&d<=5;}).length} accent="#F59E0B"/>
               <SCrd icon="💰" label="Receita/mês" val={`R$${stats.receita}`} accent="#22D3A0"/>
             </div>
             {stats.atrasado>0&&<div style={{padding:"12px 18px",background:"rgba(248,113,113,0.08)",border:"1px solid rgba(248,113,113,0.25)",borderRadius:14,marginBottom:18,display:"flex",alignItems:"center",gap:14}}><span style={{fontSize:24}}>🚨</span><div><div style={{fontSize:14,fontWeight:800,color:"#F87171"}}>{stats.atrasado} cliente(s) com mensalidade atrasada</div><div style={{fontSize:12,color:"#64748B",marginTop:2}}>Envie um lembrete ou desative o acesso até a regularização.</div></div></div>}
@@ -247,8 +304,8 @@ function AdminPanel({users,setUsers,onLogout}){
             </div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(340px,1fr))",gap:14}}>
               {bilFiltered.map(u=>{
-                const bs=u.billingStatus||"em_dia";const plan=PLANS[u.plan||"pro"];
-                const nextDue=u.nextDue?new Date(u.nextDue):null;
+                const bs=u.billing_status||"em_dia";const plan=PLANS[u.plan||"pro"];
+                const nextDue=u.next_due?new Date(u.next_due):null;
                 const daysUntil=nextDue?Math.ceil((nextDue-new Date())/86400000):null;
                 const vencendo=daysUntil!==null&&daysUntil>=0&&daysUntil<=5;
                 const vencido=daysUntil!==null&&daysUntil<0;
@@ -270,10 +327,10 @@ function AdminPanel({users,setUsers,onLogout}){
                       </div>
                       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:12}}>
                         <div style={{background:"#0F172A",borderRadius:10,padding:"8px 10px",textAlign:"center"}}><div style={{fontSize:14,fontWeight:800,color:plan.color}}>R${plan.price}</div><div style={{fontSize:9,color:"#475569",textTransform:"uppercase",letterSpacing:.5}}>Mensal</div></div>
-                        <div style={{background:"#0F172A",borderRadius:10,padding:"8px 10px",textAlign:"center"}}><div style={{fontSize:11,fontWeight:700,color:"#94A3B8"}}>{u.lastPayment||"—"}</div><div style={{fontSize:9,color:"#475569",textTransform:"uppercase",letterSpacing:.5}}>Último pag.</div></div>
-                        <div style={{background:"#0F172A",borderRadius:10,padding:"8px 10px",textAlign:"center"}}><div style={{fontSize:11,fontWeight:700,color:vencido?"#F87171":vencendo?"#F59E0B":"#94A3B8"}}>{u.nextDue||"—"}</div><div style={{fontSize:9,color:"#475569",textTransform:"uppercase",letterSpacing:.5}}>Próx. venc.</div></div>
+                        <div style={{background:"#0F172A",borderRadius:10,padding:"8px 10px",textAlign:"center"}}><div style={{fontSize:11,fontWeight:700,color:"#94A3B8"}}>{u.last_payment||"—"}</div><div style={{fontSize:9,color:"#475569",textTransform:"uppercase",letterSpacing:.5}}>Último pag.</div></div>
+                        <div style={{background:"#0F172A",borderRadius:10,padding:"8px 10px",textAlign:"center"}}><div style={{fontSize:11,fontWeight:700,color:vencido?"#F87171":vencendo?"#F59E0B":"#94A3B8"}}>{u.next_due||"—"}</div><div style={{fontSize:9,color:"#475569",textTransform:"uppercase",letterSpacing:.5}}>Próx. venc.</div></div>
                       </div>
-                      {(u.payHistory||[]).length>0&&<div style={{marginBottom:12}}><div style={{fontSize:9,color:"#475569",fontWeight:700,textTransform:"uppercase",letterSpacing:.5,marginBottom:5}}>Últimos pagamentos</div><div style={{display:"flex",gap:4,flexWrap:"wrap"}}>{[...(u.payHistory||[])].reverse().slice(0,5).map((p,i)=><div key={i} title={`${p.date} · R$${p.amount}`} style={{padding:"2px 8px",borderRadius:20,fontSize:10,fontWeight:700,background:"rgba(34,211,160,0.1)",color:"#22D3A0",border:"1px solid rgba(34,211,160,0.2)"}}>✓ {p.date?.slice(5)||""}</div>)}</div></div>}
+                      {(u.pay_history||[]).length>0&&<div style={{marginBottom:12}}><div style={{fontSize:9,color:"#475569",fontWeight:700,textTransform:"uppercase",letterSpacing:.5,marginBottom:5}}>Últimos pagamentos</div><div style={{display:"flex",gap:4,flexWrap:"wrap"}}>{[...(u.pay_history||[])].reverse().slice(0,5).map((p,i)=><div key={i} title={`${p.date} · R$${p.amount}`} style={{padding:"2px 8px",borderRadius:20,fontSize:10,fontWeight:700,background:"rgba(34,211,160,0.1)",color:"#22D3A0",border:"1px solid rgba(34,211,160,0.2)"}}>✓ {p.date?.slice(5)||""}</div>)}</div></div>}
                       <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
                         <button style={{...S.prim,background:"linear-gradient(135deg,#22D3A0,#10B981)",color:"#0F1117",fontSize:12,padding:"7px 14px"}} onClick={()=>registerPayment(u.id)}>✅ Registrar pagamento</button>
                         {u.phone&&<button style={{...S.prim,background:"#25D366",color:"#fff",fontSize:12,padding:"7px 12px"}} onClick={()=>sendWAReminder(u)}>📱 Lembrete WA</button>}
@@ -300,14 +357,14 @@ function AdminPanel({users,setUsers,onLogout}){
             <div style={{marginBottom:14}}><input style={{...S.search,maxWidth:380}} placeholder="🔍 Buscar usuário…" value={search} onChange={e=>setSearch(e.target.value)}/></div>
             <div style={{...S.card,padding:0,overflow:"hidden"}}>
               <table style={S.tbl}><thead style={{background:"#0D1320"}}><tr>{["Usuário","Login","Profissão","Plano","Cadastro","Mensalidade","Status","Ações"].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
-                <tbody>{filtered.map(u=>{const bs=u.billingStatus||"em_dia";const bilColor=bs==="atrasado"?"#F87171":"#22D3A0";const bilLabel=bs==="atrasado"?"⚠️ Atrasado":"✅ Em dia";return(
+                <tbody>{filtered.map(u=>{const bs=u.billing_status||"em_dia";const bilColor=bs==="atrasado"?"#F87171":"#22D3A0";const bilLabel=bs==="atrasado"?"⚠️ Atrasado":"✅ Em dia";return(
                   <tr key={u.id} style={S.tr} className="trow">
                     <td style={S.td}><div style={{display:"flex",alignItems:"center",gap:9}}><Ava name={u.name} size={30}/><div><div style={{fontWeight:600,color:"#E2E8F0",fontSize:13}}>{u.name}</div><div style={{fontSize:11,color:"#475569"}}>{u.email||"—"}</div></div></div></td>
                     <td style={{...S.td,fontFamily:"monospace",fontSize:12}}>{u.login}</td>
                     <td style={{...S.td,fontSize:12,color:"#94A3B8"}}>{u.profession||"—"}</td>
                     <td style={S.td}><PlBadge plan={u.plan||"basico"}/></td>
-                    <td style={{...S.td,fontSize:12,color:"#64748B"}}>{u.createdAt||"—"}</td>
-                    <td style={S.td}><span style={{fontSize:11,fontWeight:700,color:bilColor}}>{bilLabel}</span><div style={{fontSize:10,color:"#475569"}}>{u.nextDue?`Venc: ${u.nextDue}`:""}</div></td>
+                    <td style={{...S.td,fontSize:12,color:"#64748B"}}>{u.created_at||"—"}</td>
+                    <td style={S.td}><span style={{fontSize:11,fontWeight:700,color:bilColor}}>{bilLabel}</span><div style={{fontSize:10,color:"#475569"}}>{u.next_due?`Venc: ${u.next_due}`:""}</div></td>
                     <td style={S.td}><ActBadge active={u.active!==false}/></td>
                     <td style={S.td}><div style={S.acts}>
                       <TB c="#818CF8" t="Editar" onClick={()=>setModal({type:"user",data:u})}>✏️</TB>
@@ -376,7 +433,7 @@ function AdminPanel({users,setUsers,onLogout}){
 }
 
 function ModalBillingDetail({data,onClose,onRegister,onWA,onOverdue}){
-  const plan=PLANS[data.plan||"pro"];const hist=[...(data.payHistory||[])].reverse();
+  const plan=PLANS[data.plan||"pro"];const hist=[...(data.pay_history||[])].reverse();
   return(
     <Overlay onClose={onClose}>
       <div style={S.mhead}><div><div style={S.mtitle}>💳 Detalhes de Cobrança</div><div style={S.msub}>{data.name} · {plan.label}</div></div><XBtn onClick={onClose}/></div>
@@ -385,8 +442,8 @@ function ModalBillingDetail({data,onClose,onRegister,onWA,onOverdue}){
         <div style={{textAlign:"right"}}><div style={{fontSize:22,fontWeight:900,color:plan.color}}>R${plan.price}<span style={{fontSize:11,color:"#64748B"}}>/mês</span></div><div style={{marginTop:4}}><PlBadge plan={data.plan||"pro"}/></div></div>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
-        <div style={{background:"#0F172A",borderRadius:12,padding:"12px 14px",border:"1px solid #1E293B"}}><div style={{fontSize:10,color:"#64748B",textTransform:"uppercase",letterSpacing:.5,marginBottom:4}}>Último pagamento</div><div style={{fontSize:15,fontWeight:700,color:"#22D3A0"}}>{data.lastPayment||"Nenhum"}</div></div>
-        <div style={{background:"#0F172A",borderRadius:12,padding:"12px 14px",border:"1px solid #1E293B"}}><div style={{fontSize:10,color:"#64748B",textTransform:"uppercase",letterSpacing:.5,marginBottom:4}}>Próximo vencimento</div><div style={{fontSize:15,fontWeight:700,color:data.billingStatus==="atrasado"?"#F87171":"#F59E0B"}}>{data.nextDue||"—"}</div></div>
+        <div style={{background:"#0F172A",borderRadius:12,padding:"12px 14px",border:"1px solid #1E293B"}}><div style={{fontSize:10,color:"#64748B",textTransform:"uppercase",letterSpacing:.5,marginBottom:4}}>Último pagamento</div><div style={{fontSize:15,fontWeight:700,color:"#22D3A0"}}>{data.last_payment||"Nenhum"}</div></div>
+        <div style={{background:"#0F172A",borderRadius:12,padding:"12px 14px",border:"1px solid #1E293B"}}><div style={{fontSize:10,color:"#64748B",textTransform:"uppercase",letterSpacing:.5,marginBottom:4}}>Próximo vencimento</div><div style={{fontSize:15,fontWeight:700,color:data.billing_status==="atrasado"?"#F87171":"#F59E0B"}}>{data.next_due||"—"}</div></div>
       </div>
       <div style={{marginBottom:16}}><div style={{fontSize:10,color:"#475569",fontWeight:700,textTransform:"uppercase",letterSpacing:.5,marginBottom:8}}>Histórico de Pagamentos</div>{hist.length>0?(<div style={{...S.card,padding:0,overflow:"hidden"}}>{hist.map((p,i)=>(<div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 14px",borderBottom:i<hist.length-1?"1px solid #1E293B":"none"}}><div style={{display:"flex",alignItems:"center",gap:8}}><span style={{color:"#22D3A0",fontSize:14}}>✓</span><span style={{fontSize:13,color:"#CBD5E1"}}>{p.date}</span></div><span style={{fontSize:13,fontWeight:700,color:"#22D3A0"}}>R${p.amount}</span></div>))}</div>):<div style={{textAlign:"center",padding:"16px 0",color:"#475569",fontSize:13}}>Nenhum pagamento registrado</div>}</div>
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}><button style={{...S.prim,background:"linear-gradient(135deg,#22D3A0,#10B981)",color:"#0F1117",flex:1}} onClick={onRegister}>✅ Registrar pagamento</button>{data.phone&&<button style={{...S.prim,background:"#25D366",color:"#fff"}} onClick={onWA}>📱 WhatsApp</button>}<button style={{...S.ghost,borderColor:"rgba(248,113,113,.3)",color:"#F87171"}} onClick={onOverdue}>⚠️ Marcar atraso</button></div>
@@ -418,32 +475,76 @@ function ModalUserForm({data,onSave,onClose}){
 
 /* ═══ APP SHELL ══════════════════════════════════════════════════ */
 function AppShell({user,onLogout}){
-  const[data,setData,loadD]=useStorage(`orc6:data:${user.id}`,null,false);
-  const seeded=useRef(false);
+  const[data,setData]=useState(null);
+  const[loadD,setLoadD]=useState(true);
+  const[orcCounter,setOrcCounter]=useStorage(`orc6:counter:${user.id}`,1);
+
   useEffect(()=>{
-    if(!loadD&&(data===null||data===undefined)&&!seeded.current){
-      seeded.current=true;
-      setData(seedData(user.id));
+    async function load(){
+      const[budgets,clients,templates,agendamentos,profileDb,activity]=await Promise.all([
+        dbGetBudgets(user.id),dbGetClients(user.id),dbGetTemplates(user.id),
+        dbGetAgendamentos(user.id),dbGetProfile(user.id),dbGetActivity(user.id)
+      ]);
+      // Mapear perfil do banco (snake_case) para o formato do app (camelCase)
+      const profile=profileDb?{
+        name:profileDb.name||user.name||"",phone:profileDb.phone||"",email:profileDb.email||"",
+        city:profileDb.city||"",state:profileDb.state||"",profession:profileDb.profession||user.profession||"",
+        logo:profileDb.logo||"",tagline:profileDb.tagline||"",website:profileDb.website||"",
+        instagram:profileDb.instagram||"",pixKey:profileDb.pix_key||"",bank:profileDb.bank||"",
+        cnpj:profileDb.cnpj||"",paymentTerms:profileDb.payment_terms||"",
+        defaultValidity:profileDb.default_validity||15,themeId:profileDb.theme_id||"violeta",
+        primaryColor:profileDb.primary_color||"#818CF8",secondaryColor:profileDb.secondary_color||"#6366F1",
+        accentColor:profileDb.accent_color||"#22D3A0",signOff:profileDb.sign_off||"Fico à disposição para qualquer dúvida! 😊",
+        headerNote:profileDb.header_note||"",footerNote:profileDb.footer_note||"",
+        showLogo:profileDb.show_logo!==false,plan:user.plan||"pro",whatsappMsg:profileDb.whatsapp_msg||"",crea:profileDb.crea||"",
+      }:{...BLANK_PROFILE,name:user.name||"",profession:user.profession||"",plan:user.plan||"pro"};
+      // Mapear budgets do banco para formato do app
+      const budgetsMapped=(budgets||[]).map(b=>({
+        id:b.id,num:b.num||`ORC-001`,title:b.title||"",clientName:b.client_name||b.clientName||"",
+        clientId:b.client_id||b.clientId||"",phone:b.phone||"",email:b.email||"",
+        category:b.category||"Outro",status:b.status||"rascunho",date:b.date||today(),
+        validity:b.validity||15,items:b.items||[],discount:b.discount||0,tax:b.tax||0,
+        total:b.total||0,paymentMethod:b.payment_method||b.paymentMethod||"",
+        notes:b.notes||"",urgent:b.urgent||false,warrantyDays:b.warranty_days||b.warrantyDays||0,
+        desc:b.desc||"",rating:b.rating||null,userId:b.user_id||user.id,createdAt:b.created_at||today(),
+      }));
+      // Mapear clients do banco para formato do app
+      const clientsMapped=(clients||[]).map(c=>({
+        id:c.id,name:c.name||"",phone:c.phone||"",email:c.email||"",city:c.city||"",
+        state:c.state||"",obs:c.notes||"",userId:c.user_id||user.id,
+      }));
+      // Mapear agendamentos
+      const agendamentosMapped=(agendamentos||[]).map(a=>({
+        id:a.id,clientName:a.client_name||a.clientName||"",title:a.title||"",
+        date:a.date||"",time:a.time||"",duration:a.duration||"",
+        notes:a.notes||"",address:a.address||"",userId:a.user_id||user.id,
+      }));
+      // Mapear templates
+      const templatesMapped=(templates||[]).map(t=>({
+        id:t.id,name:t.name||"",category:t.category||"Outro",
+        items:t.items||[],validity:t.validity||15,userId:t.user_id||user.id,
+      }));
+      setData({budgets:budgetsMapped,clients:clientsMapped,templates:templatesMapped,agendamentos:agendamentosMapped,profile,activity});
+      setLoadD(false);
     }
-  },[loadD,data,setData,user.id]);
+    load();
+  },[user.id]);
 
-  // patch is stable: useCallback with setData dep only
   const patch=useCallback(k=>fn=>setData(d=>{
-    const base=d||(seedData(user.id));
+    const base=d||seedData(user.id);
     return{...base,[k]:typeof fn==="function"?fn(base[k]):fn};
-  }),[setData,user.id]);
+  }),[user.id]);
 
-  if(loadD||data===null||data===undefined)return<Splash user={user}/>;
+  if(loadD||data===null)return<Splash user={user}/>;
   const profile={...BLANK_PROFILE,...(data.profile||{})};
   const theme=THEMES.find(t=>t.id===profile.themeId)||THEMES[0];
   const P=profile.primaryColor||theme.primary;const A=profile.accentColor||theme.accent;
-  return<App user={user} data={{...data,profile}} patch={patch} themeP={P} themeA={A} onLogout={onLogout}/>;
+  return<App user={user} data={{...data,profile}} patch={patch} themeP={P} themeA={A} onLogout={onLogout} orcCounter={orcCounter} setOrcCounter={setOrcCounter}/>;
 }
 
 /* ═══ APP ══════════════════════════════════════════════════════════ */
-function App({user,data,patch,themeP,themeA,onLogout}){
+function App({user,data,patch,themeP,themeA,onLogout,orcCounter,setOrcCounter}){
   const{budgets=[],clients=[],templates=[],profile={},activity=[],agendamentos=[]}=data;
-  // Memoize each setter so they're stable across renders
   const setBudgets  =useMemo(()=>patch("budgets"),   [patch]);
   const setClients  =useMemo(()=>patch("clients"),   [patch]);
   const setTemplates=useMemo(()=>patch("templates"), [patch]);
@@ -454,48 +555,86 @@ function App({user,data,patch,themeP,themeA,onLogout}){
   const[modal,setModal]=useState(null);const[toast,setToast]=useState(null);
   const[filter,setFilter]=useState({status:"todos",cat:"todas",q:"",sort:"newest"});
   const[sideOpen,setSideOpen]=useState(true);
-  const[orcCounter,setOrcCounter]=useStorage(`orc6:counter:${user.id}`,1,false);
   const showToast=(msg,type="ok")=>{setToast({msg,type});setTimeout(()=>setToast(null),3000);};
   const setActivityRef=useRef(setActivity);setActivityRef.current=setActivity;
-  const addAct=useCallback(desc=>setActivityRef.current(a=>[{id:uid(),desc,ts:new Date().toLocaleString("pt-BR")},...(a||[])].slice(0,50)),[]);
+  const addAct=useCallback(async(desc)=>{
+    setActivityRef.current(a=>[{id:uid(),desc,ts:new Date().toLocaleString("pt-BR")},...(a||[])].slice(0,50));
+    await dbLogActivity(user.id,desc);
+  },[user.id]);
   const nextNum=useMemo(()=>`ORC-${String(orcCounter||1).padStart(3,"0")}`,[orcCounter]);
   const budgetsRef=useRef(budgets);budgetsRef.current=budgets;
   const setBudgetsRef=useRef(setBudgets);setBudgetsRef.current=setBudgets;
   useEffect(()=>{
-    // Run once on mount and whenever budgets change length
     const has=budgetsRef.current.some(b=>(b.status==="pendente"||b.status==="enviado")&&daysLeft(b.date,b.validity)<0);
     if(!has)return;
     setBudgetsRef.current(bs=>bs.map(b=>(b.status==="pendente"||b.status==="enviado")&&daysLeft(b.date,b.validity)<0?{...b,status:"expirado"}:b));
-  },[budgets.length]); // only re-check when number of budgets changes
+  },[budgets.length]);
 
-  const saveBudget=f=>{
+  const saveBudget=async f=>{
     const total=calcTot(f.items,f.discount,f.tax);
     const counter=orcCounter||1;
     const num=`ORC-${String(counter).padStart(3,"0")}`;
     if(f.id){
+      const dbData={title:f.title,client_name:f.clientName,client_id:f.clientId||null,phone:f.phone||"",email:f.email||"",category:f.category,status:f.status||"pendente",date:f.date,validity:f.validity,items:f.items,discount:f.discount,tax:f.tax,total,payment_method:f.paymentMethod||"",notes:f.notes||"",urgent:f.urgent||false,warranty_days:f.warrantyDays||0,desc:f.desc||"",rating:f.rating||null,num:f.num};
+      await dbSaveBudget({id:f.id,...dbData});
       setBudgets(bs=>bs.map(b=>b.id===f.id?{...f,total}:b));
       addAct(`Editou ${f.num}`);
-    } else {
-      const n={...f,id:uid(),num,userId:user.id,total,createdAt:today(),status:f.status||"pendente"};
-      setBudgets(bs=>[n,...(bs||[])]);
+    }else{
+      const dbData={user_id:user.id,title:f.title,client_name:f.clientName,client_id:f.clientId||null,phone:f.phone||"",email:f.email||"",category:f.category,status:f.status||"pendente",date:f.date,validity:f.validity,items:f.items,discount:f.discount,tax:f.tax,total,payment_method:f.paymentMethod||"",notes:f.notes||"",urgent:f.urgent||false,warranty_days:f.warrantyDays||0,desc:f.desc||"",num,_new:true};
+      const saved=await dbSaveBudget(dbData);
+      const novo={...f,id:saved?.id||uid(),num,userId:user.id,total,createdAt:today(),status:f.status||"pendente"};
+      setBudgets(bs=>[novo,...(bs||[])]);
       setOrcCounter(c=>(c||1)+1);
       addAct(`Criou ${num}`);
     }
-    if(f.clientName&&!clients.find(c=>c.id===f.clientId))
-      setClients(cs=>[...cs,{id:f.clientId||uid(),userId:user.id,name:f.clientName,phone:f.phone||"",email:f.email||"",city:"",cpfcnpj:"",obs:""}]);
+    if(f.clientName&&!clients.find(c=>c.id===f.clientId)){
+      const nc={user_id:user.id,name:f.clientName,phone:f.phone||"",email:f.email||"",_new:true};
+      const sc=await dbSaveClient(nc);
+      setClients(cs=>[...cs,{id:sc?.id||uid(),userId:user.id,name:f.clientName,phone:f.phone||"",email:f.email||"",city:"",obs:""}]);
+    }
     showToast(f.id?"Orçamento atualizado ✓":"Orçamento criado! 🎉");
     setModal(null);
   };
-  const setStatus=(id,st)=>{setBudgets(bs=>bs.map(b=>b.id===id?{...b,status:st}:b));showToast(`Status: ${STATUS[st].label}`);};
-  const delBudget=id=>{setBudgets(bs=>bs.filter(b=>b.id!==id));setModal(null);showToast("Removido","warn");};
-  const saveClient=c=>{
+  const setStatus=async(id,st)=>{
+    await dbSaveBudget({id,status:st});
+    setBudgets(bs=>bs.map(b=>b.id===id?{...b,status:st}:b));showToast(`Status: ${STATUS[st].label}`);
+  };
+  const delBudget=async id=>{
+    await dbDeleteBudget(id);
+    setBudgets(bs=>bs.filter(b=>b.id!==id));setModal(null);showToast("Removido","warn");
+  };
+  const saveClient=async c=>{
     if(c.email&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email)){showToast("E-mail inválido","warn");return;}
     if(c.phone&&c.phone.replace(/\D/g,"").length<10){showToast("Telefone inválido (mín. 10 dígitos)","warn");return;}
-    setClients(cs=>cs.find(x=>x.id===c.id)?cs.map(x=>x.id===c.id?c:x):[...cs,{...c,id:uid(),userId:user.id}]);showToast("Cliente salvo ✓");setModal(null);
+    const dbData={user_id:user.id,name:c.name,phone:c.phone||"",email:c.email||"",city:c.city||"",state:c.state||"",notes:c.obs||""};
+    if(c.id){
+      await dbSaveClient({id:c.id,...dbData});
+      setClients(cs=>cs.map(x=>x.id===c.id?c:x));
+    }else{
+      const saved=await dbSaveClient({...dbData,_new:true});
+      setClients(cs=>[...cs,{...c,id:saved?.id||uid(),userId:user.id}]);
+    }
+    showToast("Cliente salvo ✓");setModal(null);
   };
-  const delClient=id=>{setClients(cs=>cs.filter(c=>c.id!==id));setModal(null);showToast("Removido","warn");};
-  const saveTpl=t=>{setTemplates(ts=>ts.find(x=>x.id===t.id)?ts.map(x=>x.id===t.id?t:x):[...ts,{...t,id:uid(),userId:user.id}]);showToast("Template salvo ✓");setModal(null);};
-  const delTpl=id=>{setTemplates(ts=>ts.filter(t=>t.id!==id));setModal(null);showToast("Removido","warn");};
+  const delClient=async id=>{
+    await dbDeleteClient(id);
+    setClients(cs=>cs.filter(c=>c.id!==id));setModal(null);showToast("Removido","warn");
+  };
+  const saveTpl=async t=>{
+    const dbData={user_id:user.id,name:t.name,category:t.category,items:t.items,validity:t.validity||15};
+    if(t.id){
+      await dbSaveTemplate({id:t.id,...dbData});
+      setTemplates(ts=>ts.map(x=>x.id===t.id?t:x));
+    }else{
+      const saved=await dbSaveTemplate({...dbData,_new:true});
+      setTemplates(ts=>[...ts,{...t,id:saved?.id||uid(),userId:user.id}]);
+    }
+    showToast("Template salvo ✓");setModal(null);
+  };
+  const delTpl=async id=>{
+    await dbDeleteTemplate(id);
+    setTemplates(ts=>ts.filter(t=>t.id!==id));setModal(null);showToast("Removido","warn");
+  };
 
   const sendWA=b=>{
     const lines=b.items.map(i=>`  • ${i.desc} (${i.qty} ${i.unit}) → ${fmtBRL((i.qty||0)*(i.price||0))}`).join("\n");
@@ -585,8 +724,8 @@ function App({user,data,patch,themeP,themeA,onLogout}){
       {modal?.type==="preview"     &&<ModalPreview data={modal.data} profile={profile} onClose={()=>setModal(null)} sendWA={sendWA} themeP={themeP} themeA={themeA}/>}
       {modal?.type==="pdfexport"   &&<ModalPDFExport data={modal.data} profile={profile} onClose={()=>setModal(null)} themeP={themeP} themeA={themeA}/>}
       {modal?.type==="recibo"      &&<ModalRecibo data={modal.data} profile={profile} onClose={()=>setModal(null)} themeP={themeP} themeA={themeA}/>}
-      {modal?.type==="rating"      &&<ModalRating data={modal.data} onSave={r=>setBudgets(bs=>bs.map(b=>b.id===modal.data.id?{...b,rating:r}:b))} onClose={()=>setModal(null)} themeP={themeP}/>}
-      {modal?.type==="agendamento" &&<ModalAgendamento data={modal.data} onSave={a=>setAgendamentos(ag=>[...(ag||[]),a])} onClose={()=>setModal(null)} themeP={themeP}/>}
+      {modal?.type==="rating"      &&<ModalRating data={modal.data} onSave={async r=>{await dbSaveBudget({id:modal.data.id,rating:r});setBudgets(bs=>bs.map(b=>b.id===modal.data.id?{...b,rating:r}:b));}} onClose={()=>setModal(null)} themeP={themeP}/>}
+      {modal?.type==="agendamento" &&<ModalAgendamento data={modal.data} onSave={async a=>{const dbData={user_id:user.id,client_name:a.clientName,title:a.title,date:a.date,time:a.time,duration:a.duration,notes:a.notes||"",address:a.address||"",_new:true};const saved=await dbSaveAgendamento(dbData);setAgendamentos(ag=>[...(ag||[]),{...a,id:saved?.id||uid()}]);}} onClose={()=>setModal(null)} themeP={themeP}/>}
       {toast&&<Toast msg={toast.msg} type={toast.type} color={themeP}/>}
     </div>
   );
@@ -600,7 +739,20 @@ function PageConfig({profile,setProfile,user,themeP,themeA,showToast}){
   const set=(k,v)=>sf(p=>({...p,[k]:v}));
   const handleLogo=async e=>{const file=e.target.files?.[0];if(!file)return;if(file.size>2*1024*1024){showToast("Imagem muito grande! Máx. 2MB","warn");return;}const b64=await readFile(file);setLogoPreview(b64);set("logo",b64);showToast("Logo carregada ✓");};
   const removeLogo=()=>{setLogoPreview("");set("logo","");showToast("Logo removida","warn");};
-  const save=()=>{setProfile({...f,logo:logoPreview});setSaved(true);showToast("Perfil salvo ✓");setTimeout(()=>setSaved(false),2500);};
+  const save=async()=>{
+    const profileData={
+      name:f.name,phone:f.phone,email:f.email,city:f.city,state:f.state||"",
+      profession:f.profession,logo:logoPreview,tagline:f.tagline||"",website:f.website||"",
+      instagram:f.instagram||"",pix_key:f.pixKey||"",bank:f.bank||"",cnpj:f.cnpj||"",
+      payment_terms:f.paymentTerms||"",default_validity:f.defaultValidity||15,
+      theme_id:f.themeId||"violeta",primary_color:f.primaryColor||"#818CF8",
+      secondary_color:f.secondaryColor||"#6366F1",accent_color:f.accentColor||"#22D3A0",
+      sign_off:f.signOff||"",header_note:f.headerNote||"",footer_note:f.footerNote||"",
+      show_logo:f.showLogo!==false,whatsapp_msg:f.whatsappMsg||"",crea:f.crea||"",
+    };
+    await dbSaveProfile(user.id,profileData);
+    setProfile({...f,logo:logoPreview});setSaved(true);showToast("Perfil salvo ✓");setTimeout(()=>setSaved(false),2500);
+  };
   const selTheme=tid=>{const t=THEMES.find(x=>x.id===tid)||THEMES[0];sf(p=>({...p,themeId:tid,primaryColor:t.primary,secondaryColor:t.secondary,accentColor:t.accent}));};
   const TABS=[{id:"dados",lbl:"👤 Dados"},{id:"visual",lbl:"🎨 Visual"},{id:"orcamento",lbl:"📄 Orçamento"},{id:"pagamento",lbl:"💳 Pagamento"},{id:"social",lbl:"🌐 Links"}];
   return(
@@ -1244,7 +1396,7 @@ function PageAgenda({agendamentos,setAgendamentos,setModal,themeP,themeA}){
                 {a.address&&<div style={{fontSize:12,color:"#64748B"}}>📍 {a.address}</div>}
                 {a.notes&&<div style={{fontSize:11,color:"#475569",fontStyle:"italic",marginTop:2}}>"{a.notes}"</div>}
               </div>
-              <button onClick={()=>setAgendamentos(ag=>ag.filter((_,j)=>j!==i))} style={{background:"rgba(248,113,113,0.1)",border:"1px solid rgba(248,113,113,0.2)",borderRadius:8,padding:"6px 10px",color:"#F87171",cursor:"pointer",fontSize:12,fontFamily:"inherit",flexShrink:0}}>🗑️</button>
+              <button onClick={async()=>{if(a.id)await dbDeleteAgendamento(a.id);setAgendamentos(ag=>ag.filter((_,j)=>j!==i));}} style={{background:"rgba(248,113,113,0.1)",border:"1px solid rgba(248,113,113,0.2)",borderRadius:8,padding:"6px 10px",color:"#F87171",cursor:"pointer",fontSize:12,fontFamily:"inherit",flexShrink:0}}>🗑️</button>
             </div>
           );
         })}

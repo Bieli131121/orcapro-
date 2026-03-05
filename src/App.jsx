@@ -334,7 +334,7 @@ function AdminPanel({users,setUsers,onLogout}){
             <PHead title="💳 Controle de Mensalidades" sub="Acompanhe pagamentos e status de cada cliente"><PBtn onClick={()=>setModal({type:"user",data:null})}>+ Criar Usuário</PBtn></PHead>
 
             {/* KPIs */}
-            <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:12,marginBottom:22}}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:12,marginBottom:22}}>
               <SCrd icon="👥" label="Total" val={stats.total} accent="#818CF8"/>
               <SCrd icon="✅" label="Em dia" val={stats.emDia} accent="#22D3A0"/>
               <SCrd icon="⚠️" label="Atrasados" val={stats.atrasado} accent="#F87171"/>
@@ -431,7 +431,7 @@ function AdminPanel({users,setUsers,onLogout}){
         {tab==="users"&&(
           <div style={S.page}>
             <PHead title="Gerenciar Usuários" sub={`${stats.total} usuário(s) · ${stats.active} ativo(s)`}><PBtn onClick={()=>setModal({type:"user",data:null})}>+ Criar Usuário</PBtn></PHead>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20}}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:12,marginBottom:20}}>
               <SCrd icon="👥" label="Total" val={stats.total} accent="#818CF8"/>
               <SCrd icon="✅" label="Ativos" val={stats.active} accent="#22D3A0"/>
               <SCrd icon="🚫" label="Inativos" val={stats.total-stats.active} accent="#F87171"/>
@@ -1055,7 +1055,7 @@ function PageConfig({profile,setProfile,user,themeP,themeA,showToast}){
             {/* CORES */}
             <Card title="🎨 Cores e Tema">
               <div style={{fontSize:12,color:"#64748B",marginBottom:14}}>Escolha um tema pronto ou personalize as cores. Afeta sidebar, botões e documentos.</div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:18}}>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:8,marginBottom:18}}>
                 {THEMES.filter(t=>t.id!=="custom").map(t=>(
                   <button key={t.id} style={{padding:"10px 8px",borderRadius:12,border:f.themeId===t.id?`2px solid ${t.primary}`:"2px solid #1E293B",background:f.themeId===t.id?`${t.primary}15`:"#0F172A",cursor:"pointer",transition:"all .2s"}} onClick={()=>selTheme(t.id)}>
                     <div style={{display:"flex",gap:4,justifyContent:"center",marginBottom:6}}>
@@ -1178,7 +1178,7 @@ function ModalPreview({data,profile,onClose,sendWA,themeP,themeA}){
         {profile.headerNote&&<div style={{background:`${themeP}10`,padding:"8px 24px",fontSize:11,color:themeP,fontWeight:500,borderBottom:`1px solid ${themeP}20`}}>{profile.headerNote}</div>}
         <div style={{padding:"20px 24px"}}>
           {/* CLIENTE + SERVIÇO */}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:18}}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:16,marginBottom:18}}>
             <div><div style={{fontSize:10,color:"#94A3B8",fontWeight:700,textTransform:"uppercase",letterSpacing:.7,marginBottom:5}}>Cliente</div>
               <div style={{fontWeight:700,fontSize:15,color:"#1E293B"}}>{data.clientName}</div>
               {data.phone&&<div style={{fontSize:12,color:"#64748B"}}>📱 {data.phone}</div>}
@@ -1827,13 +1827,13 @@ function PageDash({stats,budgets,user,profile,clients,themeP,themeA,setModal,set
       {expiring.length>0&&<div style={{padding:"12px 16px",background:"rgba(251,146,60,0.08)",border:"1px solid rgba(251,146,60,0.25)",borderRadius:12,marginBottom:18,display:"flex",alignItems:"center",gap:10}}>
         <span style={{fontSize:18}}>⚠️</span><div><div style={{fontSize:13,fontWeight:700,color:"#FB923C"}}>{expiring.length} orçamento(s) expirando em breve</div><div style={{fontSize:12,color:"#64748B"}}>{expiring.map(b=>b.num).join(", ")}</div></div>
       </div>}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:12,marginBottom:20}}>
         <KPI icon="💰" label="Receita Aprovada" val={fmtK(stats.receita)} sub={`${stats.aprovado} aprovados`} color={themeP}/>
         <KPI icon="🔄" label="Pipeline" val={fmtK(stats.pipeline)} sub={`${stats.pendente} aguardando`} color={themeA}/>
         <KPI icon="🎯" label="Taxa Aprovação" val={`${stats.taxa}%`} sub={`de ${stats.total} orçamentos`} color={themeP}/>
         <KPI icon="📊" label="Ticket Médio" val={fmtK(stats.tick)} sub="por aprovado" color={themeA}/>
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 300px",gap:20}}>
+      <div style={{display:"grid",gridTemplateColumns:"1fr",gap:20}}>
         <div style={{display:"flex",flexDirection:"column",gap:16}}>
           <Card title="📋 Recentes" action={<Lnk onClick={()=>setPage("lista")} color={themeP}>Ver todos →</Lnk>}>
             <table style={S.tbl}><thead><tr>{["Nº","Cliente","Serviço","Total","Status",""].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
@@ -2029,13 +2029,13 @@ function PageRelatorio({budgets,stats,clients,profile,themeP,themeA}){
           <button style={{...S.prim,background:"linear-gradient(135deg,#EF4444,#DC2626)",fontSize:12,padding:"7px 14px"}} onClick={doExport}>📄 Exportar PDF</button>
         </div>
       </PHead>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:18}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:12,marginBottom:18}}>
         <SCrd icon="💰" label="Receita" val={fmtBRL(stats.receita)} accent="#22D3A0"/>
         <SCrd icon="🔄" label="Pipeline" val={fmtBRL(stats.pipeline)} accent="#818CF8"/>
         <SCrd icon="🎯" label="Conversão" val={`${stats.taxa}%`} accent="#F59E0B"/>
         <SCrd icon="📊" label="Ticket Médio" val={fmtBRL(stats.tick)} accent="#60A5FA"/>
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:16,marginBottom:16}}>
         <Card title="📈 Faturamento Mensal">
           {byMonth.map(m=><div key={m.month} style={{marginBottom:9}}><div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}><span style={{fontSize:12,color:"#94A3B8"}}>{m.month}</span><span style={{fontSize:12,fontWeight:700,color:"#22D3A0"}}>{fmtBRL(m.receita)}</span></div><div style={{height:6,background:"#1E293B",borderRadius:3}}><div style={{height:"100%",width:`${(m.receita/maxR)*100}%`,background:"linear-gradient(90deg,#22D3A0,#818CF8)",borderRadius:3}}/></div></div>)}
           {byMonth.length===0&&<div style={{color:"#475569",fontSize:13}}>Sem dados</div>}
@@ -2319,7 +2319,7 @@ function ModalConfirm({title,msg,onConfirm,onClose}){
 }
 
 /* ═══ ATOMS ══════════════════════════════════════════════════════════════ */
-const Overlay=({onClose,children,wide})=><div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.8)",backdropFilter:"blur(6px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100,padding:16}} onClick={onClose}><div style={{background:"#111827",border:"1px solid #1E293B",borderRadius:20,padding:26,width:"100%",maxWidth:wide?680:520,maxHeight:"92vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>{children}</div></div>;
+const Overlay=({onClose,children,wide})=><div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.8)",backdropFilter:"blur(6px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:100,padding:"12px 8px"}} onClick={onClose}><div style={{background:"#111827",border:"1px solid #1E293B",borderRadius:20,padding:"20px 16px",width:"100%",maxWidth:wide?680:520,maxHeight:"92dvh",overflowY:"auto",overflowX:"hidden"}} onClick={e=>e.stopPropagation()}>{children}</div></div>;
 const XBtn=({onClick})=><button onClick={onClick} style={{background:"rgba(248,113,113,0.09)",border:"1px solid rgba(248,113,113,0.2)",borderRadius:8,width:30,height:30,cursor:"pointer",color:"#F87171",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>✕</button>;
 const FL=({label,children})=><div><label style={{display:"block",fontSize:10,fontWeight:700,color:"#475569",textTransform:"uppercase",letterSpacing:.7,marginBottom:4}}>{label}</label>{children}</div>;
 const FInput=({label,type="text",value,onChange,placeholder,icon,onEnter})=><div><label style={{display:"block",fontSize:11,fontWeight:700,color:"#475569",textTransform:"uppercase",letterSpacing:.7,marginBottom:6}}>{label}</label><div style={{position:"relative"}}>{icon&&<span style={{position:"absolute",left:13,top:"50%",transform:"translateY(-50%)",fontSize:14,pointerEvents:"none"}}>{icon}</span>}<input style={{...L.finput,paddingLeft:icon?38:13}} type={type} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} onKeyDown={e=>e.key==="Enter"&&onEnter&&onEnter()}/></div></div>;
@@ -2331,7 +2331,7 @@ const Toggle=({val,onChange})=><button onClick={()=>onChange(!val)} style={{widt
 const SCrd=({icon,label,val,accent})=><div style={{background:"#111827",border:`1px solid ${accent}20`,borderRadius:14,padding:"14px 16px",position:"relative",overflow:"hidden"}}><div style={{position:"absolute",top:-8,right:-4,fontSize:42,opacity:.07}}>{icon}</div><div style={{fontSize:10,color:"#64748B",fontWeight:700,textTransform:"uppercase",letterSpacing:.7,marginBottom:4}}>{label}</div><div style={{fontSize:22,fontWeight:800,color:accent}}>{val}</div></div>;
 const KPI=({icon,label,val,sub,color})=><div style={{background:"#111827",border:`1px solid ${color}18`,borderRadius:16,padding:"16px 18px",position:"relative",overflow:"hidden"}}><div style={{position:"absolute",top:-10,right:-6,fontSize:50,opacity:.06}}>{icon}</div><div style={{fontSize:10,color:"#64748B",fontWeight:700,textTransform:"uppercase",letterSpacing:.7,marginBottom:5}}>{label}</div><div style={{fontSize:22,fontWeight:800,color,marginBottom:3}}>{val}</div><div style={{fontSize:11,color:"#475569"}}>{sub}</div></div>;
 const Card=({title,children,action})=><div style={S.card}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:11}}><span style={{fontSize:13,fontWeight:700,color:"#94A3B8"}}>{title}</span>{action}</div>{children}</div>;
-const PHead=({title,sub,children})=><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:22}}><div><h1 style={{fontSize:22,fontWeight:800,color:"#F1F5F9",margin:0}}>{title}</h1><p style={{fontSize:13,color:"#64748B",marginTop:3}}>{sub}</p></div><div style={{display:"flex",gap:8,alignItems:"center"}}>{children}</div></div>;
+const PHead=({title,sub,children})=><div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:22,gap:12,flexWrap:"wrap"}}><div><h1 style={{fontSize:20,fontWeight:800,color:"#F1F5F9",margin:0}}>{title}</h1><p style={{fontSize:12,color:"#64748B",marginTop:3}}>{sub}</p></div><div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>{children}</div></div>;
 const PBtn=({onClick,children})=><button style={S.prim} onClick={onClick}>{children}</button>;
 const GBtn=({onClick,children,grad})=><button style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,padding:"9px 12px",background:grad?"linear-gradient(135deg,#818CF8,#22D3A0)":"transparent",border:grad?"none":"1px solid #1E293B",borderRadius:10,color:grad?"#0F1117":"#64748B",fontWeight:grad?800:600,fontSize:12,cursor:"pointer",fontFamily:"inherit"}} onClick={onClick}>{children}</button>;
 const TB=({c,t,onClick,children})=><button title={t} onClick={onClick} style={{background:`${c}18`,border:`1px solid ${c}30`,borderRadius:6,width:26,height:26,cursor:"pointer",color:c,fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",padding:0}} className="tbtn">{children}</button>;
@@ -2365,7 +2365,7 @@ const S={
   topbar:  {height:52,background:"#0D1320",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 22px",flexShrink:0},
   topBtn:  {display:"flex",alignItems:"center",gap:8,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit"},
   main:    {flex:1,overflowY:"auto",background:"#0A0E1A"},
-  page:    {padding:"24px 24px 60px"},
+  page:    {padding:"24px 16px 60px",overflowX:"hidden",width:"100%",boxSizing:"border-box"},
   card:    {background:"#111827",border:"1px solid #1E293B",borderRadius:16,padding:"15px 17px"},
   tbl:     {width:"100%",borderCollapse:"collapse"},
   th:      {padding:"7px 10px",fontSize:10,fontWeight:700,color:"#475569",textTransform:"uppercase",letterSpacing:.7,textAlign:"left",borderBottom:"1px solid #1E293B"},
@@ -2389,7 +2389,7 @@ const L={
   g1:      {position:"absolute",top:"-15%",left:"15%",width:500,height:500,background:"radial-gradient(circle,rgba(99,102,241,0.15),transparent 60%)",borderRadius:"50%",pointerEvents:"none"},
   g2:      {position:"absolute",bottom:"-10%",right:"10%",width:400,height:400,background:"radial-gradient(circle,rgba(34,211,160,0.1),transparent 60%)",borderRadius:"50%",pointerEvents:"none"},
   g3:      {position:"absolute",top:"40%",right:"35%",width:200,height:200,background:"radial-gradient(circle,rgba(96,165,250,0.07),transparent 60%)",borderRadius:"50%",pointerEvents:"none"},
-  wrap:    {background:"rgba(13,19,32,0.96)",border:"1px solid #1E293B",borderRadius:28,padding:40,width:"100%",maxWidth:420,position:"relative",zIndex:1,boxShadow:"0 32px 80px rgba(0,0,0,.7)"},
+  wrap:    {background:"rgba(13,19,32,0.96)",border:"1px solid #1E293B",borderRadius:28,padding:"32px 24px",width:"100%",maxWidth:420,position:"relative",zIndex:1,boxShadow:"0 32px 80px rgba(0,0,0,.7)"},
   brand:   {display:"flex",alignItems:"center",gap:16,marginBottom:28},
   brandIco:{width:52,height:52,background:"linear-gradient(135deg,#818CF8,#22D3A0)",borderRadius:16,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24,boxShadow:"0 8px 20px rgba(129,140,248,0.3)"},
   brandName:{fontSize:26,fontWeight:900,color:"#F1F5F9",letterSpacing:-.5},
@@ -2405,7 +2405,8 @@ const L={
 };
 const GCSS=`
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800;900&display=swap');
-*{box-sizing:border-box;margin:0;padding:0;}
+*{box-sizing:border-box;margin:0;padding:0;max-width:100%;}
+html,body{overflow-x:hidden;}
 ::-webkit-scrollbar{width:4px;height:4px;}
 ::-webkit-scrollbar-track{background:#0A0E1A;}
 ::-webkit-scrollbar-thumb{background:#1E293B;border-radius:10px;}
@@ -2421,7 +2422,10 @@ input:focus,select:focus,textarea:focus{border-color:#818CF8!important;box-shado
 @keyframes spin{to{transform:rotate(360deg);}}
 .spin{display:inline-block;animation:spin 1s linear infinite;}
 @media(max-width:768px){
+  *{max-width:100%;}
   input,select,textarea{font-size:16px!important;}
   .bcard:hover{transform:none!important;}
+  img{max-width:100%;height:auto;}
+  table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%;}
 }
 `;

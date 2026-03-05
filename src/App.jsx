@@ -16,23 +16,7 @@ function useDevice(){
   },[]);
   return{isMobile};
 }
-import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
-  "https://oehdkvelzjaahddsuivz.supabase.co",
-  "sb_publishable_jGDj5i2XTvo2ADwGcUzfSg_xliD2TiP"
-);
-
-/* ═══ DEVICE DETECTION ══════════════════════════════════════════════════ */
-function useDevice(){
-  const[isMobile,setIsMobile]=useState(()=>window.innerWidth<=768);
-  useEffect(()=>{
-    const fn=()=>setIsMobile(window.innerWidth<=768);
-    window.addEventListener("resize",fn);
-    return()=>window.removeEventListener("resize",fn);
-  },[]);
-  return{isMobile,isDesktop:!isMobile};
-}
 
 /* ═══════════════════════════════════════════════════════════════════════════
    ORCAPRO v7 — Perfis Únicos · Logo · Cores Personalizadas · Identidade Visual

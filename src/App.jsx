@@ -109,12 +109,202 @@ const calcTot = (items=[],disc=0,tax=0) => { const s=calcSub(items); return s*(1
 const daysLeft= (date,val) => { const e=new Date(date); e.setDate(e.getDate()+(parseInt(val)||0)); return Math.ceil((e-new Date())/86400000); };
 const readFile= file => new Promise((res,rej)=>{ const r=new FileReader(); r.onload=e=>res(e.target.result); r.onerror=rej; r.readAsDataURL(file); });
 
+/* ═══ DOCUMENTO FISCAL ════════════════════════════════════════════════════
+   Gera documento adaptado por tipo de contribuinte:
+   PF  → Recibo de Prestação de Serviços
+   MEI → Recibo MEI + link para NFS-e na prefeitura
+   PJ  → Recibo PJ com dados fiscais completos + ISS
+══════════════════════════════════════════════════════════════════════════ */
+function gerarDocumentoFiscal(budget, profile, assinatura){
+  const tipo = profile.tipoContribuinte || "pf";
+  const themeP = profile.primaryColor || "#818CF8";
+  const themeA = profile.accentColor  || "#22D3A0";
+  const doc = window.open("","_blank");
+  if(!doc) return;
+
+  const fmtData = d => d ? new Date(d+"T12:00:00").toLocaleDateString("pt-BR") : "—";
+  const fmtVal  = v => "R$ " + Number(v||0).toLocaleString("pt-BR",{minimumFractionDigits:2});
+  const sub     = budget.items?.reduce((t,i)=>(t+(parseFloat(i.qty)||0)*(parseFloat(i.price)||0)),0)||0;
+  const iss     = tipo!=="pf" ? (sub * (parseFloat(profile.aliquotaIss)||2)/100) : 0;
+  const liquido = sub - iss;
+  const num     = budget.num || "—";
+  const docNum  = `${tipo==="pf"?"RECIBO":tipo==="mei"?"RECIBO MEI":"NOTA FISCAL"}-${num}`;
+
+  const tipoLabel = {pf:"Recibo de Prestação de Serviços", mei:"Recibo de Prestação de Serviços (MEI)", pj:"Documento Fiscal de Prestação de Serviços"}[tipo];
+
+  const itensHtml = (budget.items||[]).map(i=>`
+    <tr>
+      <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0">${i.desc||"—"}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;text-align:center">${i.qty||1} ${i.unit||"un"}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;text-align:right">${fmtVal(i.price)}</td>
+      <td style="padding:8px 10px;border-bottom:1px solid #e2e8f0;text-align:right;font-weight:700">${fmtVal((parseFloat(i.qty)||0)*(parseFloat(i.price)||0))}</td>
+    </tr>`).join("");
+
+  const fiscalInfo = tipo==="pf" ? `
+    <div style="margin-top:8px;font-size:11px;color:#64748b">
+      CPF do prestador: <b>${profile.cpf||"___.___.___-__"}</b>
+    </div>` : tipo==="mei" ? `
+    <div style="margin-top:8px;font-size:11px;color:#64748b">
+      CNPJ (MEI): <b>${profile.cnpj||"__.___.___/____-__"}</b> &nbsp;|&nbsp;
+      CPF: <b>${profile.cpf||"___.___.___-__"}</b>
+      ${profile.inscricaoMunicipal?`&nbsp;|&nbsp; Insc. Municipal: <b>${profile.inscricaoMunicipal}</b>`:""}
+    </div>` : `
+    <div style="margin-top:8px;font-size:11px;color:#64748b">
+      CNPJ: <b>${profile.cnpj||"__.___.___/____-__"}</b> &nbsp;|&nbsp;
+      Razão Social: <b>${profile.razaoSocial||profile.name}</b><br/>
+      ${profile.inscricaoMunicipal?`Insc. Municipal: <b>${profile.inscricaoMunicipal}</b> &nbsp;|&nbsp;`:""}
+      ${profile.inscricaoEstadual?`Insc. Estadual: <b>${profile.inscricaoEstadual}</b>`:""}
+    </div>`;
+
+  const issBlock = tipo!=="pf" ? `
+    <tr><td colspan="3" style="padding:6px 10px;text-align:right;color:#64748b;font-size:12px">Subtotal</td><td style="padding:6px 10px;text-align:right;color:#64748b">${fmtVal(sub)}</td></tr>
+    <tr><td colspan="3" style="padding:6px 10px;text-align:right;color:#f59e0b;font-size:12px">ISS (${profile.aliquotaIss||2}%)</td><td style="padding:6px 10px;text-align:right;color:#f59e0b">- ${fmtVal(iss)}</td></tr>
+    <tr><td colspan="3" style="padding:8px 10px;text-align:right;font-weight:700;font-size:13px">Valor Líquido</td><td style="padding:8px 10px;text-align:right;font-weight:800;font-size:15px;color:${themeP}">${fmtVal(liquido)}</td></tr>` : `
+    <tr><td colspan="3" style="padding:8px 10px;text-align:right;font-weight:700">Total</td><td style="padding:8px 10px;text-align:right;font-weight:800;font-size:15px;color:${themeP}">${fmtVal(sub)}</td></tr>`;
+
+  const meiAlert = tipo==="mei" ? `
+    <div style="margin-top:24px;padding:16px;background:#fef3c7;border:1px solid #f59e0b;border-radius:10px">
+      <div style="font-weight:700;color:#92400e;margin-bottom:6px">⚠️ Emissão de NFS-e obrigatória</div>
+      <div style="font-size:12px;color:#92400e;margin-bottom:10px">
+        Como MEI prestador de serviços, você deve emitir a Nota Fiscal de Serviço Eletrônica (NFS-e)
+        diretamente no portal da sua prefeitura. Este recibo <b>não substitui</b> a NFS-e.
+      </div>
+      ${profile.urlPrefeitura?`<a href="${profile.urlPrefeitura}" target="_blank" style="display:inline-block;padding:8px 16px;background:#f59e0b;color:#fff;text-decoration:none;border-radius:8px;font-weight:700;font-size:13px">🏛️ Abrir Portal da Prefeitura →</a>`:`<div style="font-size:11px;color:#92400e">Configure o link do portal da sua prefeitura em <b>Meu Perfil → Fiscal</b></div>`}
+    </div>` : "";
+
+  const pjAlert = tipo==="pj" ? `
+    <div style="margin-top:24px;padding:16px;background:#eff6ff;border:1px solid #3b82f6;border-radius:10px">
+      <div style="font-weight:700;color:#1e40af;margin-bottom:6px">ℹ️ Emissão de NFS-e</div>
+      <div style="font-size:12px;color:#1e40af">
+        Este documento é um recibo de controle interno. Para emitir a NFS-e oficial,
+        acesse o portal da prefeitura do seu município${profile.urlPrefeitura?` ou clique no botão abaixo`:""}.
+      </div>
+      ${profile.urlPrefeitura?`<a href="${profile.urlPrefeitura}" target="_blank" style="display:inline-block;margin-top:10px;padding:8px 16px;background:#3b82f6;color:#fff;text-decoration:none;border-radius:8px;font-weight:700;font-size:13px">🏛️ Portal da Prefeitura →</a>`:""}
+    </div>` : "";
+
+  const assinaturaBlock = assinatura ? `
+    <div style="margin-top:32px;display:flex;justify-content:space-between;align-items:flex-end">
+      <div style="text-align:center">
+        <img src="${assinatura}" style="max-width:180px;max-height:70px;object-fit:contain"/>
+        <div style="border-top:1px solid #94a3b8;margin-top:4px;padding-top:4px;font-size:11px;color:#64748b">
+          ${profile.name||"Prestador"}<br/>${profile.profession||""}
+        </div>
+      </div>
+      <div style="text-align:center">
+        <div style="width:180px;border-top:1px solid #94a3b8;padding-top:4px;font-size:11px;color:#64748b">
+          ${budget.clientName||"Cliente"}<br/>Assinatura do contratante
+        </div>
+      </div>
+    </div>` : `
+    <div style="margin-top:32px;display:flex;justify-content:space-between">
+      <div style="text-align:center">
+        <div style="width:200px;border-top:1px solid #94a3b8;padding-top:4px;font-size:11px;color:#64748b">
+          ${profile.name||"Prestador"}<br/>${profile.profession||""}
+        </div>
+      </div>
+      <div style="text-align:center">
+        <div style="width:200px;border-top:1px solid #94a3b8;padding-top:4px;font-size:11px;color:#64748b">
+          ${budget.clientName||"Cliente"}<br/>Assinatura do contratante
+        </div>
+      </div>
+    </div>`;
+
+  doc.document.write(`<!DOCTYPE html><html><head>
+    <meta charset="UTF-8"/>
+    <title>${docNum}</title>
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0;}
+      body{font-family:'Segoe UI',Arial,sans-serif;color:#1e293b;background:#f8fafc;padding:24px;}
+      .page{background:#fff;max-width:800px;margin:0 auto;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,.08);overflow:hidden;}
+      .header{background:linear-gradient(135deg,${themeP},${themeA});padding:28px 32px;color:#fff;}
+      .body{padding:28px 32px;}
+      table{width:100%;border-collapse:collapse;}
+      th{background:#f1f5f9;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#64748b;text-align:left;}
+      th:last-child,td:last-child{text-align:right;}
+      th:nth-child(2),td:nth-child(2){text-align:center;}
+      @media print{body{padding:0;background:#fff;}.page{box-shadow:none;border-radius:0;}button{display:none!important;}}
+    </style>
+  </head><body>
+    <div style="text-align:right;margin-bottom:12px;max-width:800px;margin-left:auto;margin-right:auto">
+      <button onclick="window.print()" style="padding:8px 18px;background:${themeP};color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:700">🖨️ Imprimir / Salvar PDF</button>
+    </div>
+    <div class="page">
+      <div class="header">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px">
+          <div>
+            ${profile.logo&&profile.showLogo!==false?`<img src="${profile.logo}" style="height:48px;object-fit:contain;margin-bottom:8px;display:block"/>`:``}
+            <div style="font-size:22px;font-weight:900">${profile.name||"Prestador"}</div>
+            <div style="font-size:13px;opacity:.85;margin-top:2px">${profile.profession||""}</div>
+            ${fiscalInfo.replace(/color:#64748b/g,"color:rgba(255,255,255,.75)").replace(/<b>/g,"<b>").replace(/font-size:11px/g,"font-size:11px")}
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:11px;opacity:.75;text-transform:uppercase;letter-spacing:.7px">${tipoLabel}</div>
+            <div style="font-size:28px;font-weight:900;margin-top:2px">${docNum}</div>
+            <div style="font-size:12px;opacity:.8;margin-top:4px">Data: ${fmtData(budget.date)}</div>
+          </div>
+        </div>
+      </div>
+      <div class="body">
+        <!-- PARTES -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px;padding:16px;background:#f8fafc;border-radius:10px;border:1px solid #e2e8f0">
+          <div>
+            <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.7px;margin-bottom:6px">Prestador de Serviço</div>
+            <div style="font-weight:700;color:#1e293b">${profile.name||"—"}</div>
+            <div style="font-size:12px;color:#64748b;margin-top:2px">${profile.phone||""} ${profile.email?`· ${profile.email}`:""}</div>
+            <div style="font-size:12px;color:#64748b">${profile.city||""}${profile.state?` / ${profile.state}`:""}</div>
+          </div>
+          <div>
+            <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.7px;margin-bottom:6px">Contratante</div>
+            <div style="font-weight:700;color:#1e293b">${budget.clientName||"—"}</div>
+            <div style="font-size:12px;color:#64748b;margin-top:2px">${budget.phone||""}</div>
+          </div>
+        </div>
+        <!-- SERVIÇO -->
+        <div style="margin-bottom:20px">
+          <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.7px;margin-bottom:8px">Descrição dos Serviços</div>
+          <div style="font-weight:700;font-size:15px;color:#1e293b;margin-bottom:4px">${budget.title||budget.category||"—"}</div>
+          ${budget.notes?`<div style="font-size:12px;color:#64748b;margin-top:4px">${budget.notes}</div>`:""}
+          ${profile.codigoServico?`<div style="font-size:11px;color:#94a3b8;margin-top:4px">Código de serviço: ${profile.codigoServico}</div>`:""}
+        </div>
+        <!-- ITENS -->
+        <table style="margin-bottom:8px">
+          <thead><tr>
+            <th>Descrição</th><th>Qtd</th><th style="text-align:right">Unitário</th><th style="text-align:right">Total</th>
+          </tr></thead>
+          <tbody>${itensHtml}</tbody>
+          <tfoot style="border-top:2px solid ${themeP}">
+            ${issBlock}
+          </tfoot>
+        </table>
+        <!-- PAGAMENTO -->
+        ${budget.paymentMethod?`<div style="margin-top:14px;padding:10px 14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;font-size:12px;color:#166534">💳 Forma de pagamento: <b>${budget.paymentMethod}</b></div>`:""}
+        <!-- ALERTAS MEI/PJ -->
+        ${meiAlert}${pjAlert}
+        <!-- ASSINATURA -->
+        ${assinaturaBlock}
+        <!-- RODAPÉ -->
+        <div style="margin-top:32px;padding-top:16px;border-top:1px solid #e2e8f0;text-align:center;font-size:10px;color:#94a3b8">
+          ${profile.footerNote||"Documento gerado pelo OrcaPro · "+new Date().toLocaleDateString("pt-BR")}
+        </div>
+      </div>
+    </div>
+  </body></html>`);
+  doc.document.close();
+}
+
 const BLANK_PROFILE = {
   name:"", phone:"", email:"", city:"", state:"", crea:"", profession:"",
   logo:"", signOff:"Fico à disposição para qualquer dúvida! 😊",
   plan:"pro", themeId:"violeta", primaryColor:"#818CF8", secondaryColor:"#6366F1", accentColor:"#22D3A0",
   tagline:"", website:"", instagram:"", whatsappMsg:"",
   headerNote:"", footerNote:"", showLogo:true,
+  // Fiscal
+  tipoContribuinte:"pf", // "pf" | "mei" | "pj"
+  cnpj:"", cpf:"", inscricaoMunicipal:"", inscricaoEstadual:"",
+  razaoSocial:"", nomeFantasia:"",
+  urlPrefeitura:"", // para MEI — link do portal da prefeitura
+  codigoServico:"", // código do serviço no município
+  aliquotaIss:2, // % ISS padrão
 };
 
 const seedData = u0 => ({
@@ -790,7 +980,8 @@ function App({user,data,patch,themeP,themeA,onLogout}){
     <React.Fragment>
       {modal?.type==="budget"   &&<ModalBudget data={modal.data} clients={clients} templates={templates} onSave={saveBudget} onClose={()=>setModal(null)} nextNum={nextNum} userId={user.id} themeP={themeP} themeA={themeA}/>}
       {modal?.type==="fotos"    &&<ModalFotos budgetId={modal.data?.id} budgetNum={modal.data?.num} fotos={fotos} setFotos={setFotos} onClose={()=>setModal(null)} themeP={themeP}/>}
-      {modal?.type==="detail"   &&<ModalDetail data={modal.data} onClose={()=>setModal(null)} setStatus={setStatus} sendWA={sendWA} onEdit={d=>setModal({type:"budget",data:d})} onDelete={delBudget} themeP={themeP}/>}
+      {modal?.type==="detail"   &&<ModalDetail data={modal.data} onClose={()=>setModal(null)} setStatus={setStatus} sendWA={sendWA} onEdit={d=>setModal({type:"budget",data:d})} onDelete={delBudget} themeP={themeP} setModal={setModal} profile={profile}/>}
+      {modal?.type==="docfiscal"&&<ModalDocFiscal data={modal.data} profile={profile} onClose={()=>setModal(null)} themeP={themeP} themeA={themeA}/>}
       {modal?.type==="client"   &&<ModalClient data={modal.data} onSave={saveClient} onDelete={delClient} onClose={()=>setModal(null)}/>}
       {modal?.type==="template" &&<ModalTemplate data={modal.data} onSave={saveTpl} onDelete={delTpl} onClose={()=>setModal(null)}/>}
       {modal?.type==="preview"    &&<ModalPreview data={modal.data} profile={profile} onClose={()=>setModal(null)} sendWA={sendWA} themeP={themeP} themeA={themeA}/>}
@@ -952,7 +1143,7 @@ function PageConfig({profile,setProfile,user,themeP,themeA,showToast}){
     sf(p=>({...p,themeId:tid,primaryColor:t.primary,secondaryColor:t.secondary,accentColor:t.accent}));
   };
 
-  const TABS=[{id:"dados",lbl:"👤 Dados"},{id:"visual",lbl:"🎨 Identidade Visual"},{id:"orcamento",lbl:"📄 Orçamento"},{id:"social",lbl:"🌐 Links"}];
+  const TABS=[{id:"dados",lbl:"👤 Dados"},{id:"visual",lbl:"🎨 Visual"},{id:"fiscal",lbl:"🧾 Fiscal"},{id:"orcamento",lbl:"📄 Orçamento"},{id:"social",lbl:"🌐 Links"}];
 
   return(
     <div style={S.page}>
@@ -1007,6 +1198,87 @@ function PageConfig({profile,setProfile,user,themeP,themeA,showToast}){
                 <div style={{gridColumn:"1/-1"}}><FL label="CREA / Registro Profissional"><input style={S.inp} value={f.crea||""} onChange={e=>set("crea",e.target.value)} placeholder="SP-123456"/></FL></div>
               </div>
             </Card>
+          </React.Fragment>
+        )}
+
+        {/* ABA: FISCAL */}
+        {tab==="fiscal"&&(
+          <React.Fragment>
+            <Card title="🧾 Tipo de Contribuinte">
+              <div style={{fontSize:12,color:"#64748B",marginBottom:14}}>Define o tipo de documento fiscal emitido para cada orçamento aprovado.</div>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:10,marginBottom:16}}>
+                {[
+                  {id:"pf",icon:"👤",title:"Pessoa Física",desc:"Recibo simples com CPF"},
+                  {id:"mei",icon:"🏪",title:"MEI",desc:"Recibo MEI + link NFS-e prefeitura"},
+                  {id:"pj",icon:"🏢",title:"Pessoa Jurídica",desc:"Doc. fiscal com CNPJ e ISS"},
+                ].map(t=>(
+                  <button key={t.id} onClick={()=>set("tipoContribuinte",t.id)} style={{padding:"14px 12px",borderRadius:14,border:`2px solid ${f.tipoContribuinte===t.id?"#F59E0B":"#1E293B"}`,background:f.tipoContribuinte===t.id?"rgba(245,158,11,.1)":"#0F172A",cursor:"pointer",textAlign:"left",fontFamily:"inherit"}}>
+                    <div style={{fontSize:22,marginBottom:6}}>{t.icon}</div>
+                    <div style={{fontSize:13,fontWeight:800,color:f.tipoContribuinte===t.id?"#F59E0B":"#F1F5F9"}}>{t.title}</div>
+                    <div style={{fontSize:10,color:"#64748B",marginTop:3}}>{t.desc}</div>
+                  </button>
+                ))}
+              </div>
+            </Card>
+
+            <Card title="📋 Dados Fiscais">
+              <div style={{display:"flex",flexDirection:"column",gap:12,marginTop:12}}>
+                {(f.tipoContribuinte==="pf"||f.tipoContribuinte==="mei")&&(
+                  <FL label="CPF"><input style={S.inp} value={f.cpf||""} onChange={e=>set("cpf",e.target.value)} placeholder="000.000.000-00"/></FL>
+                )}
+                {(f.tipoContribuinte==="mei"||f.tipoContribuinte==="pj")&&(
+                  <React.Fragment>
+                    <FL label="CNPJ"><input style={S.inp} value={f.cnpj||""} onChange={e=>set("cnpj",e.target.value)} placeholder="00.000.000/0000-00"/></FL>
+                    <FL label="Razão Social"><input style={S.inp} value={f.razaoSocial||""} onChange={e=>set("razaoSocial",e.target.value)} placeholder="Nome completo da empresa"/></FL>
+                    <FL label="Nome Fantasia"><input style={S.inp} value={f.nomeFantasia||""} onChange={e=>set("nomeFantasia",e.target.value)} placeholder="Nome comercial"/></FL>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                      <FL label="Inscrição Municipal"><input style={S.inp} value={f.inscricaoMunicipal||""} onChange={e=>set("inscricaoMunicipal",e.target.value)} placeholder="Ex: 12345-6"/></FL>
+                      {f.tipoContribuinte==="pj"&&<FL label="Inscrição Estadual"><input style={S.inp} value={f.inscricaoEstadual||""} onChange={e=>set("inscricaoEstadual",e.target.value)} placeholder="Ex: 123.456.789"/></FL>}
+                    </div>
+                  </React.Fragment>
+                )}
+              </div>
+            </Card>
+
+            {(f.tipoContribuinte==="mei"||f.tipoContribuinte==="pj")&&(
+              <Card title="💰 Configuração de ISS">
+                <div style={{display:"flex",flexDirection:"column",gap:12,marginTop:12}}>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                    <FL label="Alíquota ISS (%)">
+                      <input style={S.inp} type="number" min="0" max="5" step="0.1" value={f.aliquotaIss||2} onChange={e=>set("aliquotaIss",parseFloat(e.target.value)||2)}/>
+                    </FL>
+                    <FL label="Código do Serviço (LC 116)">
+                      <input style={S.inp} value={f.codigoServico||""} onChange={e=>set("codigoServico",e.target.value)} placeholder="Ex: 7.02"/>
+                    </FL>
+                  </div>
+                  <div style={{padding:"10px 12px",background:"rgba(245,158,11,.06)",border:"1px solid rgba(245,158,11,.2)",borderRadius:9,fontSize:11,color:"#F59E0B"}}>
+                    💡 A alíquota do ISS varia por município (geralmente 2% a 5%). Consulte a legislação da sua cidade.
+                    O código de serviço segue a Lista de Serviços da LC 116/2003.
+                  </div>
+                </div>
+              </Card>
+            )}
+
+            {(f.tipoContribuinte==="mei"||f.tipoContribuinte==="pj")&&(
+              <Card title="🏛️ Portal da Prefeitura">
+                <div style={{display:"flex",flexDirection:"column",gap:12,marginTop:12}}>
+                  <FL label="URL do portal NFS-e da sua prefeitura">
+                    <input style={S.inp} value={f.urlPrefeitura||""} onChange={e=>set("urlPrefeitura",e.target.value)} placeholder="https://nfse.suacidade.gov.br"/>
+                  </FL>
+                  <div style={{fontSize:11,color:"#64748B"}}>
+                    Este link aparece no recibo para facilitar a emissão da NFS-e na prefeitura.
+                    {f.urlPrefeitura&&<span> <a href={f.urlPrefeitura} target="_blank" rel="noreferrer" style={{color:themeP}}>Testar link →</a></span>}
+                  </div>
+                </div>
+              </Card>
+            )}
+
+            <div style={{padding:"14px 16px",background:"rgba(34,211,160,.06)",border:"1px solid rgba(34,211,160,.2)",borderRadius:12,fontSize:12,color:"#94A3B8",lineHeight:1.6}}>
+              <div style={{fontWeight:700,color:"#22D3A0",marginBottom:6}}>ℹ️ Como funciona</div>
+              <div><b style={{color:"#F1F5F9"}}>PF:</b> Gera um Recibo de Prestação de Serviços com seu CPF. Sem obrigação de emitir NFS-e (depende do valor e município).</div>
+              <div style={{marginTop:4}}><b style={{color:"#F1F5F9"}}>MEI:</b> Gera recibo MEI e abre o portal da prefeitura para você emitir a NFS-e (obrigatória para serviços acima de R$ 6.750,00/mês).</div>
+              <div style={{marginTop:4}}><b style={{color:"#F1F5F9"}}>PJ:</b> Gera documento fiscal com todos os dados da empresa, ISS destacado, e link para emissão da NFS-e.</div>
+            </div>
           </React.Fragment>
         )}
 
@@ -2213,7 +2485,7 @@ function ModalBudget({data,clients,templates,onSave,onClose,nextNum,userId,theme
   );
 }
 
-function ModalDetail({data,onClose,setStatus,sendWA,onEdit,onDelete,themeP,setModal}){
+function ModalDetail({data,onClose,setStatus,sendWA,onEdit,onDelete,themeP,setModal,profile}){
   const [del,setDel]=useState(false);const sub=calcSub(data.items);const dl=daysLeft(data.date,data.validity);
   return(
     <Overlay onClose={onClose}>
@@ -2243,11 +2515,69 @@ function ModalDetail({data,onClose,setStatus,sendWA,onEdit,onDelete,themeP,setMo
         {setModal&&<button style={{...S.ghost,padding:"8px 12px"}} onClick={()=>setModal({type:"localizacao",data})}>📍 Local</button>}
         {setModal&&<button style={{...S.ghost,padding:"8px 12px",borderColor:"rgba(129,140,248,.3)",color:"#818CF8"}} onClick={()=>setModal({type:"assinatura",data})}>✍️ Assinar</button>}
       </div>
+      {/* BOTÃO FISCAL */}
+      <div style={{marginBottom:10}}>
+        {setModal&&<button style={{...S.prim,width:"100%",background:"linear-gradient(135deg,#F59E0B,#D97706)",justifyContent:"center",display:"flex",alignItems:"center",gap:8}} onClick={()=>setModal({type:"docfiscal",data})}>
+          🧾 {{pf:"Emitir Recibo",mei:"Emitir Recibo MEI",pj:"Emitir Documento Fiscal"}[profile?.tipoContribuinte||"pf"]}
+        </button>}
+      </div>
       <div style={{display:"flex",gap:6}}>
         <button style={{...S.ghost,padding:"8px 14px"}} onClick={()=>onEdit(data)}>✏️ Editar</button>
         <button style={{...S.ghost,padding:"8px 14px",borderColor:"rgba(248,113,113,.3)",color:"#F87171"}} onClick={()=>setDel(true)}>🗑️ Excluir</button>
       </div>
       {del&&<div style={{marginTop:10,padding:12,background:"rgba(248,113,113,.07)",borderRadius:9,border:"1px solid rgba(248,113,113,.2)"}}><div style={{fontSize:13,color:"#F87171",marginBottom:8}}>Confirmar exclusão?</div><div style={{display:"flex",gap:8}}><button style={{...S.prim,background:"#F87171",color:"#fff"}} onClick={()=>onDelete(data.id)}>Excluir</button><button style={S.ghost} onClick={()=>setDel(false)}>Cancelar</button></div></div>}
+    </Overlay>
+  );
+}
+
+
+/* ═══ MODAL DOCUMENTO FISCAL ════════════════════════════════════════════ */
+function ModalDocFiscal({data,profile,onClose,themeP,themeA}){
+  const canvasRef=useRef(null);
+  const [drawing,setDrawing]=useState(false);
+  const [hasSign,setHasSign]=useState(false);
+  const [lastPos,setLastPos]=useState(null);
+  const tipo=profile?.tipoContribuinte||"pf";
+  const tipoLabel={pf:"Recibo de Prestação de Serviços",mei:"Recibo MEI",pj:"Documento Fiscal"}[tipo];
+  const tipoColor={pf:"#818CF8",mei:"#F59E0B",pj:"#22D3A0"}[tipo];
+  const getPos=(e,canvas)=>{const r=canvas.getBoundingClientRect();if(e.touches){return{x:e.touches[0].clientX-r.left,y:e.touches[0].clientY-r.top};}return{x:e.clientX-r.left,y:e.clientY-r.top};};
+  const startDraw=e=>{e.preventDefault();const canvas=canvasRef.current;if(!canvas)return;setDrawing(true);setHasSign(true);setLastPos(getPos(e,canvas));};
+  const draw=e=>{e.preventDefault();if(!drawing)return;const canvas=canvasRef.current;if(!canvas)return;const ctx=canvas.getContext("2d");const pos=getPos(e,canvas);ctx.beginPath();ctx.moveTo(lastPos.x,lastPos.y);ctx.lineTo(pos.x,pos.y);ctx.strokeStyle="#1e293b";ctx.lineWidth=2.5;ctx.lineCap="round";ctx.stroke();setLastPos(pos);};
+  const endDraw=e=>{e.preventDefault();setDrawing(false);setLastPos(null);};
+  const clearSign=()=>{const canvas=canvasRef.current;if(!canvas)return;const ctx=canvas.getContext("2d");ctx.clearRect(0,0,canvas.width,canvas.height);setHasSign(false);};
+  const emitir=()=>{const canvas=canvasRef.current;const assinatura=hasSign?canvas.toDataURL("image/png"):null;gerarDocumentoFiscal(data,profile||{},assinatura);};
+  return(
+    <Overlay onClose={onClose} wide>
+      <div style={S.mhead}><div><div style={S.mtitle}>🧾 {tipoLabel}</div><div style={S.msub}>{data.num} · {data.clientName}</div></div><XBtn onClick={onClose}/></div>
+      <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
+        {["pf","mei","pj"].map(t=>(<div key={t} style={{padding:"4px 14px",borderRadius:20,fontSize:11,fontWeight:700,background:tipo===t?`${tipoColor}20`:"transparent",border:`1px solid ${tipo===t?tipoColor:"#1E293B"}`,color:tipo===t?tipoColor:"#475569"}}>{{pf:"👤 Pessoa Física",mei:"🏪 MEI",pj:"🏢 PJ"}[t]}{tipo===t&&" ✓"}</div>))}
+        <div style={{fontSize:11,color:"#475569",alignSelf:"center",marginLeft:"auto"}}>Configure em Perfil → Fiscal</div>
+      </div>
+      <div style={{background:"#0F172A",borderRadius:12,border:"1px solid #1E293B",padding:"14px 16px",marginBottom:16}}>
+        <div style={{fontSize:12,fontWeight:700,color:"#64748B",marginBottom:10,textTransform:"uppercase"}}>Resumo</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+          {[["Serviço",data.title||data.category],["Cliente",data.clientName],["Data",data.date],["Valor",fmtBRL(data.total)],...(tipo!=="pf"?[["ISS ("+(profile?.aliquotaIss||2)+"%)",fmtBRL(data.total*(parseFloat(profile?.aliquotaIss)||2)/100)],["Líquido",fmtBRL(data.total-(data.total*(parseFloat(profile?.aliquotaIss)||2)/100))]]:[])].map(([k,v])=>(<div key={k} style={{background:"#1E293B",borderRadius:8,padding:"8px 10px"}}><div style={{fontSize:10,color:"#64748B",marginBottom:2}}>{k}</div><div style={{fontSize:13,fontWeight:700,color:"#F1F5F9"}}>{v}</div></div>))}
+        </div>
+        {tipo==="pf"&&!profile?.cpf&&<div style={{marginTop:10,padding:"8px 10px",background:"rgba(245,158,11,.08)",borderRadius:8,fontSize:11,color:"#F59E0B"}}>⚠️ Configure seu CPF em Meu Perfil → Fiscal</div>}
+        {(tipo==="mei"||tipo==="pj")&&!profile?.cnpj&&<div style={{marginTop:10,padding:"8px 10px",background:"rgba(245,158,11,.08)",borderRadius:8,fontSize:11,color:"#F59E0B"}}>⚠️ Configure seu CNPJ em Meu Perfil → Fiscal</div>}
+        {tipo==="mei"&&<div style={{marginTop:10,padding:"8px 10px",background:"rgba(245,158,11,.08)",border:"1px solid rgba(245,158,11,.2)",borderRadius:8,fontSize:11,color:"#F59E0B"}}>⚠️ Este recibo não substitui a NFS-e. Emita também no portal da prefeitura.</div>}
+      </div>
+      <div style={{marginBottom:16}}>
+        <div style={{fontSize:12,fontWeight:700,color:"#94A3B8",marginBottom:8}}>✍️ Assinatura visual (opcional)</div>
+        <div style={{position:"relative",border:"2px dashed #334155",borderRadius:12,background:"#F8FAFC",overflow:"hidden"}}>
+          <canvas ref={canvasRef} width={460} height={110} style={{display:"block",width:"100%",height:110,touchAction:"none",cursor:"crosshair"}} onMouseDown={startDraw} onMouseMove={draw} onMouseUp={endDraw} onMouseLeave={endDraw} onTouchStart={startDraw} onTouchMove={draw} onTouchEnd={endDraw}/>
+          {!hasSign&&<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none",color:"#94A3B8",fontSize:13}}>Desenhe sua assinatura aqui</div>}
+        </div>
+        {hasSign&&<button onClick={clearSign} style={{marginTop:6,fontSize:11,color:"#F87171",background:"none",border:"none",cursor:"pointer"}}>🗑️ Limpar</button>}
+      </div>
+      <div style={{display:"flex",gap:8,justifyContent:"space-between",flexWrap:"wrap"}}>
+        <button style={S.ghost} onClick={onClose}>Cancelar</button>
+        <div style={{display:"flex",gap:8}}>
+          {tipo==="mei"&&profile?.urlPrefeitura&&<button style={{...S.ghost,borderColor:"rgba(245,158,11,.4)",color:"#F59E0B"}} onClick={()=>window.open(profile.urlPrefeitura,"_blank")}>🏛️ Portal Prefeitura</button>}
+          {tipo==="pj"&&profile?.urlPrefeitura&&<button style={{...S.ghost,borderColor:"rgba(34,211,160,.4)",color:"#22D3A0"}} onClick={()=>window.open(profile.urlPrefeitura,"_blank")}>🏛️ Portal Prefeitura</button>}
+          <button style={{...S.prim,background:`linear-gradient(135deg,${tipoColor},${themeP})`,display:"flex",alignItems:"center",gap:8}} onClick={emitir}>🧾 Gerar {tipoLabel}</button>
+        </div>
+      </div>
     </Overlay>
   );
 }

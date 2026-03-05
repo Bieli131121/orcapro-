@@ -6,6 +6,34 @@ const supabase = createClient(
   "sb_publishable_jGDj5i2XTvo2ADwGcUzfSg_xliD2TiP"
 );
 
+/* ═══ DEVICE DETECTION ══════════════════════════════════════════════════ */
+function useDevice(){
+  const[isMobile,setIsMobile]=useState(()=>typeof window!=="undefined"&&window.innerWidth<=768);
+  useEffect(()=>{
+    const fn=()=>setIsMobile(window.innerWidth<=768);
+    window.addEventListener("resize",fn);
+    return()=>window.removeEventListener("resize",fn);
+  },[]);
+  return{isMobile};
+}
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  "https://oehdkvelzjaahddsuivz.supabase.co",
+  "sb_publishable_jGDj5i2XTvo2ADwGcUzfSg_xliD2TiP"
+);
+
+/* ═══ DEVICE DETECTION ══════════════════════════════════════════════════ */
+function useDevice(){
+  const[isMobile,setIsMobile]=useState(()=>window.innerWidth<=768);
+  useEffect(()=>{
+    const fn=()=>setIsMobile(window.innerWidth<=768);
+    window.addEventListener("resize",fn);
+    return()=>window.removeEventListener("resize",fn);
+  },[]);
+  return{isMobile,isDesktop:!isMobile};
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    ORCAPRO v7 — Perfis Únicos · Logo · Cores Personalizadas · Identidade Visual
    ⚠️  Credenciais de admin removidas do código. Configure via variáveis de
@@ -106,50 +134,40 @@ const BLANK_PROFILE = {
 };
 
 const seedData = u0 => ({
-  budgets:[],
-  clients:[],
-  templates:[],
-  profile:{...BLANK_PROFILE},
-  activity:[],
-  fotos:{},
-  notificacoes:[],
-  estoque:[],
+  budgets:[],clients:[],templates:[],
+  profile:{...BLANK_PROFILE},activity:[],fotos:{},notificacoes:[],estoque:[],
 });
 
 /* ═══ STORAGE ═══════════════════════════════════════════════════════════ */
-function useStorage(key,fallback,shared=false){
-  const [val,setVal]=useState(null);const [loading,setL]=useState(true);
+function useStorage(key,fallback){
+  const[val,setVal]=useState(()=>{try{const r=localStorage.getItem(key);return r?JSON.parse(r):fallback;}catch{return fallback;}});
   const valRef=useRef(val);
-  valRef.current=val;
-  useEffect(()=>{(async()=>{try{const r=await window.storage.get(key,shared);setVal(r?JSON.parse(r.value):fallback);}catch{setVal(fallback);}setL(false);})();},[key]); //eslint-disable-line
-  const save=useCallback(async nv=>{
+  useEffect(()=>{valRef.current=val;},[val]);
+  const save=useCallback(nv=>{
     const v=typeof nv==="function"?nv(valRef.current):nv;
-    setVal(v);
-    try{await window.storage.set(key,JSON.stringify(v),shared);}catch{}
-  },[key,shared]); // valRef.current não precisa estar nas deps — acesso via ref
-  return[val,save,loading];
+    valRef.current=v;setVal(v);
+    try{localStorage.setItem(key,JSON.stringify(v));}catch{}
+  },[key]);
+  return[val,save,false];
 }
 
 /* ═══ ROOT ═══════════════════════════════════════════════════════════════ */
 export default function Root(){
-  const [users,setUsers]=useState([]);
-  const [session,setSession]=useState(()=>{try{return JSON.parse(localStorage.getItem("orc6:session"));}catch{return null;}});
-  const [loading,setLoading]=useState(true);
-
+  const[users,setUsers]=useState([]);
+  const[session,setSession]=useState(()=>{try{return JSON.parse(localStorage.getItem("orc6:session"));}catch{return null;}});
+  const[loading,setLoading]=useState(true);
   useEffect(()=>{
     supabase.from("users").select("*").order("created_at",{ascending:false})
       .then(({data})=>{setUsers(data||[]);setLoading(false);});
   },[]);
-
   if(loading)return<Splash/>;
-
   const isAdmin=session?.userId===ADMIN.id;
   const currentUser=isAdmin?ADMIN:(users||[]).find(u=>u.id===session?.userId);
-  const login=async u=>{const s={userId:u.id,ts:Date.now()};localStorage.setItem("orc6:session",JSON.stringify(s));setSession(s);};
-  const logout=async()=>{localStorage.removeItem("orc6:session");setSession(null);};
+  const login=u=>{const s={userId:u.id,ts:Date.now()};localStorage.setItem("orc6:session",JSON.stringify(s));setSession(s);};
+  const logout=()=>{localStorage.removeItem("orc6:session");setSession(null);};
   if(!currentUser)return<React.Fragment><style>{GCSS}</style><LoginScreen users={users||[]} onLogin={login}/></React.Fragment>;
   if(isAdmin)return<React.Fragment><style>{GCSS}</style><AdminPanel users={users||[]} setUsers={setUsers} onLogout={logout}/></React.Fragment>;
-  return<React.Fragment><style>{GCSS}</style><AppShell user={currentUser} users={users} setUsers={setUsers} onLogout={logout}/></React.Fragment>;
+  return<React.Fragment><style>{GCSS}</style><AppShell user={currentUser} onLogout={logout}/></React.Fragment>;
 }
 
 /* ═══ LOGIN ══════════════════════════════════════════════════════════════ */
@@ -220,14 +238,13 @@ function AdminPanel({users,setUsers,onLogout}){
       const novaData=today();const venc=addMonths(novaData,1);
       const passwordHash=f.password?await hashPassword(f.password):"";
       const novo={name:f.name,login:f.login,email:f.email||null,phone:f.phone||null,password:passwordHash,profession:f.profession||null,plan:f.plan||"pro",active:true,billing_status:"em_dia",last_payment:novaData,next_due:venc,pay_history:[]};
-      const {data,error}=await supabase.from("users").insert([novo]).select().single();
+      const{data,error}=await supabase.from("users").insert([novo]).select().single();
       if(error){showToast("Erro ao criar usuário","warn");console.error(error);return;}
-      setUsers(us=>[data,...(us||[])]);
-      showToast(`Conta criada: ${f.name} ✓`);
+      setUsers(us=>[data,...(us||[])]);showToast(`Conta criada: ${f.name} ✓`);
     }else{
-      let updatedUser={...f};
-      if(f._passwordChanged&&f.password){updatedUser={...f,password:await hashPassword(f.password),_passwordChanged:undefined};}
-      const {data,error}=await supabase.from("users").update(updatedUser).eq("id",f.id).select().single();
+      let fields={name:f.name,login:f.login,email:f.email||null,phone:f.phone||null,profession:f.profession||null,plan:f.plan||"pro"};
+      if(f._passwordChanged&&f.password)fields.password=await hashPassword(f.password);
+      const{data,error}=await supabase.from("users").update(fields).eq("id",f.id).select().single();
       if(error){showToast("Erro ao salvar","warn");console.error(error);return;}
       setUsers(us=>us.map(u=>u.id===f.id?data:u));showToast("Salvo ✓");
     }
@@ -235,9 +252,8 @@ function AdminPanel({users,setUsers,onLogout}){
   };
   const toggleActive=async id=>{
     const u=(users||[]).find(x=>x.id===id);if(!u)return;
-    const {data}=await supabase.from("users").update({active:!u.active}).eq("id",id).select().single();
-    if(data)setUsers(us=>us.map(x=>x.id===id?data:x));
-    showToast("Status alterado");
+    const{data}=await supabase.from("users").update({active:!u.active}).eq("id",id).select().single();
+    if(data)setUsers(us=>us.map(x=>x.id===id?data:x));showToast("Status alterado");
   };
   const delUser=async id=>{
     await supabase.from("users").delete().eq("id",id);
@@ -248,13 +264,13 @@ function AdminPanel({users,setUsers,onLogout}){
     const novaData=today();const venc=addMonths(novaData,1);
     const u=(users||[]).find(x=>x.id===id);if(!u)return;
     const hist=[...(u.pay_history||[]),{date:novaData,amount:PLANS[u.plan||"pro"]?.price||49,status:"pago"}];
-    const {data}=await supabase.from("users").update({billing_status:"em_dia",last_payment:novaData,next_due:venc,pay_history:hist,active:true}).eq("id",id).select().single();
+    const{data}=await supabase.from("users").update({billing_status:"em_dia",last_payment:novaData,next_due:venc,pay_history:hist,active:true}).eq("id",id).select().single();
     if(data)setUsers(us=>us.map(x=>x.id===id?data:x));
     showToast("Pagamento registrado ✓");
   };
 
   const markOverdue=async(id)=>{
-    const {data}=await supabase.from("users").update({billing_status:"atrasado"}).eq("id",id).select().single();
+    const{data}=await supabase.from("users").update({billing_status:"atrasado"}).eq("id",id).select().single();
     if(data)setUsers(us=>us.map(x=>x.id===id?data:x));
     showToast("Marcado como atrasado","warn");
   };
@@ -766,11 +782,102 @@ function App({user,data,patch,themeP,themeA,onLogout}){
   const plan=profile.plan||"pro";const planInfo=PLANS[plan]||PLANS.pro;
   const planPct=Math.round((budgets.length/planInfo.max)*100);
   const unreadChat=(chatMsgs||[]).filter(m=>!m.read&&m.from==="admin").length;
+  const {isMobile}=useDevice();
+  const [maisOpen,setMaisOpen]=useState(false);
   const NAVS=[{id:"dashboard",ico:"📊",lbl:"Dashboard"},{id:"lista",ico:"📋",lbl:"Orçamentos"},{id:"clientes",ico:"👥",lbl:"Clientes"},{id:"relatorio",ico:"📈",lbl:"Relatórios"},{id:"templates",ico:"📄",lbl:"Templates"},{id:"atividade",ico:"🕐",lbl:"Atividades"},{id:"notificacoes",ico:"🔔",lbl:"Notificações",badge:notificacoes.filter(n=>!n.read).length},{id:"chat",ico:"💬",lbl:"Mensagens",badge:unreadChat},{id:"estoque",ico:"📦",lbl:"Estoque"},{id:"config",ico:"⚙️",lbl:"Meu Perfil"}];
+  const MOBILE_NAVS=[{id:"dashboard",ico:"📊",lbl:"Início"},{id:"lista",ico:"📋",lbl:"Orçamentos"},{id:"clientes",ico:"👥",lbl:"Clientes"},{id:"config",ico:"⚙️",lbl:"Perfil"},{id:"mais",ico:"☰",lbl:"Mais"}];
 
+  const pageContent=(
+    <main style={{flex:1,overflowY:"auto",background:"#0A0E1A",paddingBottom:isMobile?80:0}}>
+      {page==="dashboard" &&<PageDash stats={stats} budgets={budgets} user={user} profile={profile} clients={clients} themeP={themeP} themeA={themeA} setModal={setModal} setStatus={setStatus} sendWA={sendWA} setPage={setPage}/>}
+      {page==="lista"     &&<PageLista filtered={filtered} filter={filter} setFilter={setFilter} themeP={themeP} themeA={themeA} setModal={setModal} setStatus={setStatus} sendWA={sendWA} delBudget={delBudget}/>}
+      {page==="clientes"  &&<PageClientes budgets={budgets} clients={clients} setModal={setModal}/>}
+      {page==="relatorio" &&<PageRelatorio budgets={budgets} stats={stats} clients={clients} profile={profile} themeP={themeP} themeA={themeA}/>}
+      {page==="templates" &&<PageTemplates templates={templates} setModal={setModal}/>}
+      {page==="atividade" &&<PageAtividade activity={activity}/>}
+      {page==="config"       &&<PageConfig profile={profile} setProfile={setProfile} user={user} themeP={themeP} themeA={themeA} showToast={showToast}/>}
+      {page==="notificacoes"  &&<PageNotificacoes notificacoes={notificacoes} markRead={markNotifsRead} setNotificacoes={setNotificacoes} themeP={themeP}/>}
+      {page==="chat"          &&<PageChat chatMsgs={chatMsgs} setChatMsgs={setChatMsgs} user={user} themeP={themeP} themeA={themeA}/>}
+      {page==="estoque"       &&<PageEstoque estoque={estoque} setEstoque={setEstoque} themeP={themeP} themeA={themeA} showToast={showToast}/>}
+    </main>
+  );
+
+  const modais=(
+    <React.Fragment>
+      {modal?.type==="budget"   &&<ModalBudget data={modal.data} clients={clients} templates={templates} onSave={saveBudget} onClose={()=>setModal(null)} nextNum={nextNum} userId={user.id} themeP={themeP} themeA={themeA}/>}
+      {modal?.type==="fotos"    &&<ModalFotos budgetId={modal.data?.id} budgetNum={modal.data?.num} fotos={fotos} setFotos={setFotos} onClose={()=>setModal(null)} themeP={themeP}/>}
+      {modal?.type==="detail"   &&<ModalDetail data={modal.data} onClose={()=>setModal(null)} setStatus={setStatus} sendWA={sendWA} onEdit={d=>setModal({type:"budget",data:d})} onDelete={delBudget} themeP={themeP}/>}
+      {modal?.type==="client"   &&<ModalClient data={modal.data} onSave={saveClient} onDelete={delClient} onClose={()=>setModal(null)}/>}
+      {modal?.type==="template" &&<ModalTemplate data={modal.data} onSave={saveTpl} onDelete={delTpl} onClose={()=>setModal(null)}/>}
+      {modal?.type==="preview"    &&<ModalPreview data={modal.data} profile={profile} onClose={()=>setModal(null)} sendWA={sendWA} themeP={themeP} themeA={themeA}/>}
+      {modal?.type==="assinatura"  &&<ModalAssinatura data={modal.data} onSave={b=>{setBudgets(bs=>bs.map(x=>x.id===b.id?b:x));setModal(null);showToast("Assinatura salva ✓");}} onClose={()=>setModal(null)} themeP={themeP} themeA={themeA}/>}
+      {modal?.type==="localizacao" &&<ModalLocalizacao data={modal.data} onSave={b=>{setBudgets(bs=>bs.map(x=>x.id===b.id?b:x));setModal(null);showToast("Localização salva ✓");}} onClose={()=>setModal(null)} themeP={themeP}/>}
+      {toast&&<Toast msg={toast.msg} type={toast.type} color={themeP}/>}
+    </React.Fragment>
+  );
+
+  /* ── LAYOUT MOBILE ─────────────────────────────────────────────────── */
+  if(isMobile){
+    const navGo=id=>{if(id==="mais"){setMaisOpen(o=>!o);}else{setPage(id);setMaisOpen(false);}};
+    return(
+      <div style={{display:"flex",flexDirection:"column",height:"100dvh",background:"#0A0E1A",fontFamily:"'DM Sans',sans-serif",color:"#CBD5E1",overflow:"hidden"}}>
+        {/* TOPBAR MOBILE */}
+        <div style={{height:56,background:"#0D1320",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 16px",flexShrink:0,borderBottom:`1px solid ${themeP}20`,zIndex:10}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            {profile.logo&&profile.showLogo!==false
+              ?<img src={profile.logo} alt="" style={{width:28,height:28,borderRadius:6,objectFit:"contain"}}/>
+              :<div style={{width:28,height:28,background:`linear-gradient(135deg,${themeP},${themeA})`,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>⚡</div>}
+            <span style={{fontSize:16,fontWeight:800,color:themeP}}>{profile.name||"OrcaPro"}</span>
+          </div>
+          <button style={{background:`linear-gradient(135deg,${themeP},${themeA})`,border:"none",borderRadius:20,padding:"8px 16px",color:"#fff",fontWeight:800,fontSize:13,cursor:"pointer",fontFamily:"inherit"}} onClick={()=>{setMaisOpen(false);setModal({type:"budget",data:null});}}>+ Novo</button>
+        </div>
+
+        {/* OVERLAY "MAIS" */}
+        {maisOpen&&<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:39}} onClick={()=>setMaisOpen(false)}/>}
+
+        {/* MENU "MAIS" */}
+        {maisOpen&&(
+          <div style={{position:"fixed",bottom:64,left:0,right:0,background:"#0D1320",border:`1px solid ${themeP}25`,borderRadius:"20px 20px 0 0",padding:"20px 16px 12px",zIndex:40,display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+            <div style={{gridColumn:"1/-1",fontSize:11,color:"#475569",fontWeight:700,textTransform:"uppercase",letterSpacing:.7,marginBottom:4}}>Mais páginas</div>
+            {NAVS.filter(n=>!["dashboard","lista","clientes","config"].includes(n.id)).map(n=>(
+              <button key={n.id} onClick={()=>navGo(n.id)} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,background:page===n.id?`${themeP}18`:"#111827",border:`1px solid ${page===n.id?themeP:"#1E293B"}`,borderRadius:14,padding:"14px 8px",cursor:"pointer",fontFamily:"inherit",position:"relative",minHeight:70}}>
+                <span style={{fontSize:24}}>{n.ico}</span>
+                <span style={{fontSize:10,fontWeight:700,color:page===n.id?themeP:"#94A3B8",textAlign:"center"}}>{n.lbl}</span>
+                {n.badge>0&&<span style={{position:"absolute",top:6,right:6,background:"#F87171",color:"#fff",fontSize:8,fontWeight:800,borderRadius:"50%",minWidth:15,height:15,display:"flex",alignItems:"center",justifyContent:"center"}}>{n.badge>9?"9+":n.badge}</span>}
+              </button>
+            ))}
+            <button onClick={onLogout} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,background:"rgba(248,113,113,0.08)",border:"1px solid rgba(248,113,113,0.2)",borderRadius:14,padding:"14px 8px",cursor:"pointer",fontFamily:"inherit",minHeight:70}}>
+              <span style={{fontSize:24}}>🚪</span>
+              <span style={{fontSize:10,fontWeight:700,color:"#F87171"}}>Sair</span>
+            </button>
+          </div>
+        )}
+
+        {/* CONTEÚDO */}
+        {pageContent}
+
+        {/* BOTTOM NAV */}
+        <div style={{position:"fixed",bottom:0,left:0,right:0,height:64,background:"#0D1320",borderTop:`1px solid ${themeP}20`,display:"flex",alignItems:"center",justifyContent:"space-around",zIndex:50,paddingBottom:"env(safe-area-inset-bottom,0px)"}}>
+          {MOBILE_NAVS.map(n=>{
+            const ativo=(n.id==="mais"&&maisOpen)||(n.id!=="mais"&&page===n.id&&!maisOpen);
+            return(
+              <button key={n.id} onClick={()=>navGo(n.id)} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",padding:"6px 10px",borderRadius:10,position:"relative",color:ativo?themeP:"#475569",minWidth:52}}>
+                <span style={{fontSize:22}}>{n.ico}</span>
+                <span style={{fontSize:9,fontWeight:700}}>{n.lbl}</span>
+                {n.badge>0&&<span style={{position:"absolute",top:2,right:6,background:"#F87171",color:"#fff",fontSize:8,fontWeight:800,borderRadius:"50%",minWidth:14,height:14,display:"flex",alignItems:"center",justifyContent:"center"}}>{n.badge>9?"9+":n.badge}</span>}
+                {ativo&&<span style={{position:"absolute",bottom:-2,left:"50%",transform:"translateX(-50%)",width:20,height:2,background:themeP,borderRadius:2}}/>}
+              </button>
+            );
+          })}
+        </div>
+        {modais}
+      </div>
+    );
+  }
+
+  /* ── LAYOUT DESKTOP ─────────────────────────────────────────────────── */
   return(
     <div style={S.root}>
-      {/* SIDEBAR */}
       <aside style={{...S.side,width:sideOpen?246:68,transition:"width .3s cubic-bezier(.4,0,.2,1)",borderRight:`1px solid ${themeP}18`}}>
         <div style={S.sTop}>
           <div style={S.logo} onClick={()=>setSideOpen(o=>!o)}>
@@ -781,9 +888,7 @@ function App({user,data,patch,themeP,themeA,onLogout}){
           </div>
           {sideOpen&&(
             <div style={{...S.chip,borderColor:`${themeP}25`,background:`${themeP}08`}}>
-              {profile.logo
-                ?<img src={profile.logo} alt="" style={{width:32,height:32,borderRadius:"50%",objectFit:"cover",flexShrink:0}}/>
-                :<Ava name={user.name} size={32} color={themeP}/>}
+              {profile.logo?<img src={profile.logo} alt="" style={{width:32,height:32,borderRadius:"50%",objectFit:"cover",flexShrink:0}}/>:<Ava name={user.name} size={32} color={themeP}/>}
               <div style={{overflow:"hidden",flex:1}}>
                 <div style={{...S.chipName,color:"#F1F5F9"}}>{profile.name||user.name}</div>
                 <div style={{...S.chipRole,color:themeP}}>{profile.profession||user.profession||"Prestador"}</div>
@@ -821,7 +926,6 @@ function App({user,data,patch,themeP,themeA,onLogout}){
           </button>
         </div>
       </aside>
-      {/* TOPBAR */}
       <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
         <div style={{...S.topbar,borderBottom:`1px solid ${themeP}15`}}>
           <div style={{fontSize:13,color:"#475569"}}>{new Date().toLocaleDateString("pt-BR",{weekday:"long",day:"numeric",month:"long"})}</div>
@@ -833,28 +937,9 @@ function App({user,data,patch,themeP,themeA,onLogout}){
             </button>
           </div>
         </div>
-        <main style={{flex:1,overflowY:"auto",background:"#0A0E1A"}}>
-          {page==="dashboard" &&<PageDash stats={stats} budgets={budgets} user={user} profile={profile} clients={clients} themeP={themeP} themeA={themeA} setModal={setModal} setStatus={setStatus} sendWA={sendWA} setPage={setPage}/>}
-          {page==="lista"     &&<PageLista filtered={filtered} filter={filter} setFilter={setFilter} themeP={themeP} themeA={themeA} setModal={setModal} setStatus={setStatus} sendWA={sendWA} delBudget={delBudget}/>}
-          {page==="clientes"  &&<PageClientes budgets={budgets} clients={clients} setModal={setModal}/>}
-          {page==="relatorio" &&<PageRelatorio budgets={budgets} stats={stats} clients={clients} profile={profile} themeP={themeP} themeA={themeA}/>}
-          {page==="templates" &&<PageTemplates templates={templates} setModal={setModal}/>}
-          {page==="atividade" &&<PageAtividade activity={activity}/>}
-          {page==="config"       &&<PageConfig profile={profile} setProfile={setProfile} user={user} themeP={themeP} themeA={themeA} showToast={showToast}/>}
-          {page==="notificacoes"  &&<PageNotificacoes notificacoes={notificacoes} markRead={markNotifsRead} setNotificacoes={setNotificacoes} themeP={themeP}/>}
-          {page==="chat"          &&<PageChat chatMsgs={chatMsgs} setChatMsgs={setChatMsgs} user={user} themeP={themeP} themeA={themeA}/>}
-          {page==="estoque"       &&<PageEstoque estoque={estoque} setEstoque={setEstoque} themeP={themeP} themeA={themeA} showToast={showToast}/>}
-        </main>
+        {pageContent}
       </div>
-      {modal?.type==="budget"   &&<ModalBudget data={modal.data} clients={clients} templates={templates} onSave={saveBudget} onClose={()=>setModal(null)} nextNum={nextNum} userId={user.id} themeP={themeP} themeA={themeA}/>}
-      {modal?.type==="fotos"    &&<ModalFotos budgetId={modal.data?.id} budgetNum={modal.data?.num} fotos={fotos} setFotos={setFotos} onClose={()=>setModal(null)} themeP={themeP}/>}
-      {modal?.type==="detail"   &&<ModalDetail data={modal.data} onClose={()=>setModal(null)} setStatus={setStatus} sendWA={sendWA} onEdit={d=>setModal({type:"budget",data:d})} onDelete={delBudget} themeP={themeP}/>}
-      {modal?.type==="client"   &&<ModalClient data={modal.data} onSave={saveClient} onDelete={delClient} onClose={()=>setModal(null)}/>}
-      {modal?.type==="template" &&<ModalTemplate data={modal.data} onSave={saveTpl} onDelete={delTpl} onClose={()=>setModal(null)}/>}
-      {modal?.type==="preview"    &&<ModalPreview data={modal.data} profile={profile} onClose={()=>setModal(null)} sendWA={sendWA} themeP={themeP} themeA={themeA}/>}
-      {modal?.type==="assinatura"  &&<ModalAssinatura data={modal.data} onSave={b=>{setBudgets(bs=>bs.map(x=>x.id===b.id?b:x));setModal(null);showToast("Assinatura salva ✓");}} onClose={()=>setModal(null)} themeP={themeP} themeA={themeA}/>}
-      {modal?.type==="localizacao" &&<ModalLocalizacao data={modal.data} onSave={b=>{setBudgets(bs=>bs.map(x=>x.id===b.id?b:x));setModal(null);showToast("Localização salva ✓");}} onClose={()=>setModal(null)} themeP={themeP}/>}
-      {toast&&<Toast msg={toast.msg} type={toast.type} color={themeP}/>}
+      {modais}
     </div>
   );
 }
@@ -2351,4 +2436,8 @@ input:focus,select:focus,textarea:focus{border-color:#818CF8!important;box-shado
 @keyframes fadeUp{from{transform:translateY(24px);opacity:0;}to{transform:translateY(0);opacity:1;}}
 @keyframes spin{to{transform:rotate(360deg);}}
 .spin{display:inline-block;animation:spin 1s linear infinite;}
+@media(max-width:768px){
+  input,select,textarea{font-size:16px!important;}
+  .bcard:hover{transform:none!important;}
+}
 `;

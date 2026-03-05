@@ -48,13 +48,9 @@ const STATUS = {
      hashPassword("suaSenha").then(console.log)
    Cole o resultado em ADMIN.passwordHash abaixo.
    Hash padrão gerado para "ana0406": executado na inicialização abaixo. */
-let ADMIN = {id:"admin-analua",name:"Analua",login:"analua",passwordHash:"",role:"admin"};
-// Inicializa o hash do admin na primeira execução (somente se não tiver hash)
-(async () => {
-  if (!ADMIN.passwordHash) {
-    ADMIN = {...ADMIN, passwordHash: await hashPassword("ana0406")};
-  }
-})();
+// Senha do admin verificada diretamente (sem hash assíncrono para evitar race condition)
+const ADMIN_PASSWORD = "ana0406";
+const ADMIN = {id:"admin-analua",name:"Analua",login:"analua",role:"admin"};
 
 const fmtBRL  = v => "R$\u00a0"+Number(v||0).toLocaleString("pt-BR",{minimumFractionDigits:2});
 const fmtK    = v => v>=1000?`R$\u00a0${(v/1000).toFixed(1)}k`:fmtBRL(v);
@@ -164,8 +160,7 @@ function LoginScreen({users,onLogin}){
     setErr("");setLd(true);await new Promise(r=>setTimeout(r,500));
     // Verifica admin
     if(login.trim().toLowerCase()==="analua"){
-      const ok=await checkPassword(pass,ADMIN.passwordHash);
-      if(ok){await onLogin(ADMIN);setLd(false);return;}
+      if(pass===ADMIN_PASSWORD){await onLogin(ADMIN);setLd(false);return;}
     }
     // Verifica usuários
     const candidates=(users||[]).filter(u=>(u.login?.toLowerCase()===login.trim().toLowerCase()||u.email?.toLowerCase()===login.trim().toLowerCase())&&u.active!==false);

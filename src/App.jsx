@@ -106,23 +106,9 @@ const BLANK_PROFILE = {
 };
 
 const seedData = u0 => ({
-  budgets:[
-    {id:uid(),num:"ORC-001",userId:u0,clientName:"João Silva",clientId:"c1",phone:"11991230001",
-     category:"Elétrica",title:"Instalação elétrica residencial",desc:"12 pontos de tomada + iluminação.",
-     items:[{id:"i1",desc:"Mão de obra",qty:1,unit:"serv",price:800},{id:"i2",desc:"Material elétrico",qty:1,unit:"kit",price:450}],
-     status:"aprovado",date:"2026-01-20",validity:30,discount:5,tax:0,notes:"PIX em 2x",total:1187.5,createdAt:"2026-01-20"},
-    {id:uid(),num:"ORC-002",userId:u0,clientName:"Maria Costa",clientId:"c2",phone:"21991230002",
-     category:"Hidráulica",title:"Reforma hidráulica banheiro",desc:"Substituição completa.",
-     items:[{id:"i3",desc:"Mão de obra",qty:1,unit:"serv",price:600},{id:"i4",desc:"Material hidráulico",qty:1,unit:"kit",price:380}],
-     status:"pendente",date:"2026-03-01",validity:15,discount:0,tax:0,notes:"",total:980,createdAt:"2026-03-01"},
-  ],
-  clients:[
-    {id:"c1",userId:u0,name:"João Silva",phone:"11991230001",email:"joao@email.com",city:"São Paulo",cpfcnpj:"",obs:"Cliente fiel desde 2024."},
-    {id:"c2",userId:u0,name:"Maria Costa",phone:"21991230002",email:"maria@email.com",city:"Rio de Janeiro",cpfcnpj:"",obs:""},
-  ],
-  templates:[
-    {id:"t1",userId:u0,name:"Elétrica Básica",category:"Elétrica",items:[{id:"ti1",desc:"Mão de obra",qty:1,unit:"serv",price:500},{id:"ti2",desc:"Material",qty:1,unit:"kit",price:300}],discount:0,validity:15},
-  ],
+  budgets:[],
+  clients:[],
+  templates:[],
   profile:{...BLANK_PROFILE},
   activity:[],
   fotos:{},

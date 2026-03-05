@@ -864,39 +864,35 @@ function AppShell({user,onLogout}){
   // Carrega dados do Supabase ao montar
   useEffect(()=>{
     supabase.from("user_data").select("*").eq("user_id",user.id).single()
-      .then(({data:row,error})=>{
-        if(row){
+      .then(({data:row})=>{
+        if(row&&row.data){
           setDataState({
-            budgets:row.budgets||[],
-            clients:row.clients||[],
-            templates:row.templates||[],
-            profile:row.profile||{},
-            activity:row.activity||[],
-            fotos:row.fotos||{},
-            notificacoes:row.notificacoes||[],
-            estoque:row.estoque||[],
-            chatMsgs:row.chat_msgs||[],
-            orcCounter:row.orc_counter||1,
+            budgets:row.data.budgets||[],
+            clients:row.data.clients||[],
+            templates:row.data.templates||[],
+            profile:row.data.profile||{},
+            activity:row.data.activity||[],
+            fotos:row.data.fotos||{},
+            notificacoes:row.data.notificacoes||[],
+            estoque:row.data.estoque||[],
+            chatMsgs:row.data.chatMsgs||[],
+            orcCounter:row.data.orcCounter||1,
           });
         } else {
-          // Primeiro acesso: cria registro vazio
           const seed=seedData(user.id);
-          supabase.from("user_data").insert([{user_id:user.id,...toDbRow(seed),orc_counter:1}])
-            .then(()=>setDataState({...seed,orcCounter:1}));
+          const init={...seed,orcCounter:1,chatMsgs:[]};
+          supabase.from("user_data").upsert({user_id:user.id,data:init},{onConflict:"user_id"})
+            .then(()=>setDataState(init));
         }
         setLoading(false);
       });
   },[user.id]); // eslint-disable-line
 
-  // Salva no Supabase com debounce de 800ms para não sobrecarregar
   const saveToDb=useCallback((d)=>{
     if(saveTimeout.current)clearTimeout(saveTimeout.current);
     saveTimeout.current=setTimeout(()=>{
-      supabase.from("user_data").upsert({
-        user_id:user.id,...toDbRow(d),orc_counter:d.orcCounter||1
-      },{onConflict:"user_id"}).then(({error})=>{
-        if(error)console.error("Erro ao salvar dados:",error);
-      });
+      supabase.from("user_data").upsert({user_id:user.id,data:d},{onConflict:"user_id"})
+        .then(({error})=>{if(error)console.error("Erro ao salvar:",error);});
     },800);
   },[user.id]);
 
@@ -919,20 +915,6 @@ function AppShell({user,onLogout}){
 }
 
 // Converte estado interno → colunas do banco
-function toDbRow(d){
-  return{
-    budgets:d.budgets||[],
-    clients:d.clients||[],
-    templates:d.templates||[],
-    profile:d.profile||{},
-    activity:d.activity||[],
-    fotos:d.fotos||{},
-    notificacoes:d.notificacoes||[],
-    estoque:d.estoque||[],
-    chat_msgs:d.chatMsgs||[],
-    orc_counter:d.orcCounter||1,
-  };
-}
 
 /* ═══ APP ════════════════════════════════════════════════════════════════ */
 function App({user,data,patch,themeP,themeA,onLogout}){

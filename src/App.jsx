@@ -1956,7 +1956,7 @@ function PageRelatorio({budgets,stats,clients,profile,themeP,themeA}){
           </select>
           <button style={{...S.prim,background:"linear-gradient(135deg,#EF4444,#DC2626)",fontSize:12,padding:"7px 14px"}} onClick={doExport}>📄 Exportar PDF</button>
         </div>
-      </PHead
+      </PHead>
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:18}}>
         <SCrd icon="💰" label="Receita" val={fmtBRL(stats.receita)} accent="#22D3A0"/>
         <SCrd icon="🔄" label="Pipeline" val={fmtBRL(stats.pipeline)} accent="#818CF8"/>

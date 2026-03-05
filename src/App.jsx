@@ -309,7 +309,7 @@ const BLANK_PROFILE = {
 
 const seedData = u0 => ({
   budgets:[],clients:[],templates:[],
-  profile:{...BLANK_PROFILE},activity:[],fotos:{},notificacoes:[],estoque:[],
+  profile:{...BLANK_PROFILE},activity:[],fotos:{},notificacoes:[],estoque:[],despesas:[],
 });
 
 /* ═══ STORAGE ═══════════════════════════════════════════════════════════ */
@@ -918,13 +918,14 @@ function AppShell({user,onLogout}){
 
 /* ═══ APP ════════════════════════════════════════════════════════════════ */
 function App({user,data,patch,themeP,themeA,onLogout}){
-  const {budgets=[],clients=[],templates=[],profile={},activity=[],fotos={},notificacoes=[],estoque=[],orcCounter=1,chatMsgs=[]}=data;
+  const {budgets=[],clients=[],templates=[],profile={},activity=[],fotos={},notificacoes=[],estoque=[],despesas=[],orcCounter=1,chatMsgs=[]}=data;
   const setBudgets=patch("budgets");const setClients=patch("clients");
   const setTemplates=patch("templates");const setProfile=patch("profile");
   const setActivity=patch("activity");
   const setFotos=patch("fotos");
   const setNotificacoes=patch("notificacoes");
   const setEstoque=patch("estoque");
+  const setDespesas=patch("despesas");
   const setOrcCounter=patch("orcCounter");
   const setChatMsgs=patch("chatMsgs");
   const [page,setPage]=useState("dashboard");
@@ -1004,7 +1005,7 @@ function App({user,data,patch,themeP,themeA,onLogout}){
   const unreadChat=(chatMsgs||[]).filter(m=>!m.read&&m.from==="admin").length;
   const {isMobile}=useDevice();
   const [maisOpen,setMaisOpen]=useState(false);
-  const NAVS=[{id:"dashboard",ico:"📊",lbl:"Dashboard"},{id:"lista",ico:"📋",lbl:"Orçamentos"},{id:"clientes",ico:"👥",lbl:"Clientes"},{id:"relatorio",ico:"📈",lbl:"Relatórios"},{id:"templates",ico:"📄",lbl:"Templates"},{id:"atividade",ico:"🕐",lbl:"Atividades"},{id:"notificacoes",ico:"🔔",lbl:"Notificações",badge:notificacoes.filter(n=>!n.read).length},{id:"chat",ico:"💬",lbl:"Mensagens",badge:unreadChat},{id:"estoque",ico:"📦",lbl:"Estoque"},{id:"config",ico:"⚙️",lbl:"Meu Perfil"}];
+  const NAVS=[{id:"dashboard",ico:"📊",lbl:"Dashboard"},{id:"lista",ico:"📋",lbl:"Orçamentos"},{id:"clientes",ico:"👥",lbl:"Clientes"},{id:"relatorio",ico:"📈",lbl:"Relatórios"},{id:"templates",ico:"📄",lbl:"Templates"},{id:"atividade",ico:"🕐",lbl:"Atividades"},{id:"notificacoes",ico:"🔔",lbl:"Notificações",badge:notificacoes.filter(n=>!n.read).length},{id:"chat",ico:"💬",lbl:"Mensagens",badge:unreadChat},{id:"estoque",ico:"📦",lbl:"Estoque"},{id:"financeiro",ico:"💰",lbl:"Financeiro"},{id:"config",ico:"⚙️",lbl:"Meu Perfil"}];
   const MOBILE_NAVS=[{id:"dashboard",ico:"📊",lbl:"Início"},{id:"lista",ico:"📋",lbl:"Orçamentos"},{id:"clientes",ico:"👥",lbl:"Clientes"},{id:"config",ico:"⚙️",lbl:"Perfil"},{id:"mais",ico:"☰",lbl:"Mais"}];
 
   const pageContent=(
@@ -1019,6 +1020,7 @@ function App({user,data,patch,themeP,themeA,onLogout}){
       {page==="notificacoes"  &&<PageNotificacoes notificacoes={notificacoes} markRead={markNotifsRead} setNotificacoes={setNotificacoes} themeP={themeP}/>}
       {page==="chat"          &&<PageChat chatMsgs={chatMsgs} setChatMsgs={setChatMsgs} user={user} themeP={themeP} themeA={themeA}/>}
       {page==="estoque"       &&<PageEstoque estoque={estoque} setEstoque={setEstoque} themeP={themeP} themeA={themeA} showToast={showToast}/>}
+      {page==="financeiro"    &&<PageFinanceiro budgets={budgets} despesas={despesas} setDespesas={setDespesas} profile={profile} themeP={themeP} themeA={themeA} showToast={showToast}/>}
     </main>
   );
 
@@ -2127,6 +2129,382 @@ function ModalEstoqueItem({data,onSave,onDelete,onClose,themeP}){
         <div style={{display:"flex",gap:8}}>
           <button style={S.ghost} onClick={onClose}>Cancelar</button>
           <button style={{...S.prim,opacity:ok?1:.4,cursor:ok?"pointer":"not-allowed"}} onClick={()=>ok&&onSave(f)}>{data?"💾 Salvar":"+ Adicionar"}</button>
+        </div>
+      </div>
+    </Overlay>
+  );
+}
+
+
+/* ═══ PAGE FINANCEIRO ═══════════════════════════════════════════════════ */
+const CATS_DESP = ["Material","Combustível","Ferramentas","EPI/Segurança","Manutenção","Impostos/Taxas","Marketing","Transporte","Alimentação","Outros"];
+
+function exportDREPDF(budgets,despesas,mes,ano,profile,themeP,themeA){
+  const meses=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+  const label=`${meses[mes]} / ${ano}`;
+  const bMes=budgets.filter(b=>{const d=new Date(b.createdAt||b.date);return d.getMonth()===mes&&d.getFullYear()===ano;});
+  const dMes=(despesas||[]).filter(d=>{const dt=new Date(d.date);return dt.getMonth()===mes&&dt.getFullYear()===ano;});
+  const receitaBruta=bMes.filter(b=>b.status==="aprovado").reduce((s,b)=>s+b.total,0);
+  const totalDesp=dMes.reduce((s,d)=>s+d.valor,0);
+  const lucroLiq=receitaBruta-totalDesp;
+  const margem=receitaBruta>0?((lucroLiq/receitaBruta)*100).toFixed(1):0;
+  const bPend=bMes.filter(b=>b.status==="pendente"||b.status==="enviado").reduce((s,b)=>s+b.total,0);
+
+  // group despesas by cat
+  const byCat={};
+  dMes.forEach(d=>{byCat[d.categoria]=(byCat[d.categoria]||0)+d.valor;});
+  const catRows=Object.entries(byCat).map(([cat,val])=>`
+    <tr><td style="padding:7px 12px;border:1px solid #E2E8F0;font-size:12px">${cat}</td>
+    <td style="padding:7px 12px;border:1px solid #E2E8F0;font-size:12px;text-align:right;color:#EF4444">${fmtBRL(val)}</td></tr>`).join("");
+
+  const html=`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
+  <title>DRE ${label}</title>
+  <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Arial,sans-serif;background:#F8FAFC;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  @media print{body{background:#fff}.no-print{display:none}}
+  @media screen{.page{max-width:820px;margin:20px auto;box-shadow:0 4px 24px rgba(0,0,0,.1);}}</style></head>
+  <body><div class="page" style="background:#fff">
+  <div style="background:linear-gradient(135deg,${themeP},${themeA});padding:28px 36px;display:flex;justify-content:space-between;align-items:center">
+    <div><div style="font-size:11px;color:rgba(255,255,255,.7);text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">Demonstrativo de Resultado</div>
+    <div style="font-size:26px;font-weight:900;color:#fff">${label}</div>
+    <div style="font-size:13px;color:rgba(255,255,255,.8);margin-top:4px">${profile.name||"OrcaPro"}${profile.profession?` · ${profile.profession}`:""}</div></div>
+    <div style="text-align:right"><div style="font-size:11px;color:rgba(255,255,255,.7)">Gerado em</div>
+    <div style="font-size:13px;font-weight:700;color:#fff">${new Date().toLocaleDateString("pt-BR")}</div></div>
+  </div>
+  <div style="padding:28px 36px">
+    <!-- DRE -->
+    <div style="margin-bottom:24px">
+      <div style="font-size:10px;color:#94A3B8;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Demonstrativo de Resultado</div>
+      <table style="width:100%;border-collapse:collapse">
+        ${[
+          {label:"(+) Receita Bruta (aprovados)",val:receitaBruta,color:"#166534",bg:"#DCFCE7",bold:false},
+          {label:"(−) Total de Despesas",val:-totalDesp,color:"#991B1B",bg:"#FEE2E2",bold:false},
+          {label:"(=) Lucro Líquido",val:lucroLiq,color:lucroLiq>=0?"#166534":"#991B1B",bg:lucroLiq>=0?"#DCFCE7":"#FEE2E2",bold:true},
+        ].map(r=>`<tr style="background:${r.bg}"><td style="padding:10px 14px;border:1px solid #E2E8F0;font-size:13px;font-weight:${r.bold?800:500};color:${r.color}">${r.label}</td>
+        <td style="padding:10px 14px;border:1px solid #E2E8F0;font-size:${r.bold?16:13}px;font-weight:${r.bold?900:600};color:${r.color};text-align:right">${fmtBRL(Math.abs(r.val))}</td></tr>`).join("")}
+        <tr style="background:#EFF6FF"><td style="padding:8px 14px;border:1px solid #E2E8F0;font-size:12px;color:#1E40AF">Margem de Lucro</td>
+        <td style="padding:8px 14px;border:1px solid #E2E8F0;font-size:14px;font-weight:800;color:#1E40AF;text-align:right">${margem}%</td></tr>
+        <tr style="background:#FFFBEB"><td style="padding:8px 14px;border:1px solid #E2E8F0;font-size:12px;color:#92400E">Pipeline (pendente/enviado)</td>
+        <td style="padding:8px 14px;border:1px solid #E2E8F0;font-size:13px;font-weight:700;color:#D97706;text-align:right">${fmtBRL(bPend)}</td></tr>
+      </table>
+    </div>
+    <!-- Despesas por categoria -->
+    ${dMes.length>0?`<div style="margin-bottom:24px">
+      <div style="font-size:10px;color:#94A3B8;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Despesas por Categoria</div>
+      <table style="width:100%;border-collapse:collapse">${catRows}</table>
+    </div>`:""}
+    <!-- Despesas detalhadas -->
+    ${dMes.length>0?`<div style="margin-bottom:24px">
+      <div style="font-size:10px;color:#94A3B8;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Despesas Detalhadas</div>
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr style="background:#F8FAFC">${["Data","Categoria","Descrição","Valor"].map(h=>`<th style="padding:8px 12px;border:1px solid #E2E8F0;font-size:11px;font-weight:700;color:#475569;text-align:left;text-transform:uppercase">${h}</th>`).join("")}</tr></thead>
+        <tbody>${dMes.map((d,i)=>`<tr style="background:${i%2===0?"#fff":"#F8FAFC"}">
+          <td style="padding:7px 12px;border:1px solid #E2E8F0;font-size:12px">${d.date}</td>
+          <td style="padding:7px 12px;border:1px solid #E2E8F0;font-size:12px">${d.categoria}</td>
+          <td style="padding:7px 12px;border:1px solid #E2E8F0;font-size:12px">${d.desc||"—"}</td>
+          <td style="padding:7px 12px;border:1px solid #E2E8F0;font-size:12px;text-align:right;color:#EF4444;font-weight:600">${fmtBRL(d.valor)}</td>
+        </tr>`).join("")}</tbody>
+        <tfoot><tr style="background:#FEE2E2"><td colspan="3" style="padding:8px 12px;border:1px solid #E2E8F0;font-weight:700">TOTAL DESPESAS</td>
+        <td style="padding:8px 12px;border:1px solid #E2E8F0;font-weight:900;color:#EF4444;text-align:right">${fmtBRL(totalDesp)}</td></tr></tfoot>
+      </table>
+    </div>`:""}
+    <div style="padding-top:16px;border-top:1px solid #E2E8F0;display:flex;justify-content:space-between;font-size:11px;color:#94A3B8">
+      <span>${profile.name||"OrcaPro"}${profile.phone?` · ${profile.phone}`:""}</span>
+      <span>DRE gerado pelo OrcaPro</span>
+    </div>
+  </div></div>
+  <script>window.onload=function(){window.print();}<\/script></body></html>`;
+  const w=window.open("","_blank");if(!w){alert("Permita pop-ups para exportar");return;}
+  w.document.write(html);w.document.close();
+}
+
+function PageFinanceiro({budgets,despesas,setDespesas,profile,themeP,themeA,showToast}){
+  const [mes,setMes]=useState(new Date().getMonth());
+  const [ano,setAno]=useState(new Date().getFullYear());
+  const [modal,setModal]=useState(null);
+  const [tab,setTab]=useState("fluxo");
+  const meses=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+  const anos=[2024,2025,2026,2027];
+
+  // Dados do mês selecionado
+  const bMes=budgets.filter(b=>{const d=new Date(b.createdAt||b.date);return d.getMonth()===mes&&d.getFullYear()===ano;});
+  const dMes=(despesas||[]).filter(d=>{const dt=new Date(d.date);return dt.getMonth()===mes&&dt.getFullYear()===ano;});
+  const receitaBruta=bMes.filter(b=>b.status==="aprovado").reduce((s,b)=>s+b.total,0);
+  const pipeline=bMes.filter(b=>b.status==="pendente"||b.status==="enviado").reduce((s,b)=>s+b.total,0);
+  const totalDesp=dMes.reduce((s,d)=>s+(d.valor||0),0);
+  const lucroLiq=receitaBruta-totalDesp;
+  const margem=receitaBruta>0?((lucroLiq/receitaBruta)*100).toFixed(1):0;
+
+  // Fluxo dos últimos 6 meses
+  const fluxo6=Array.from({length:6},(_,i)=>{
+    const d=new Date(ano,mes-5+i,1);
+    const m=d.getMonth();const a=d.getFullYear();
+    const rec=budgets.filter(b=>{const bd=new Date(b.createdAt||b.date);return bd.getMonth()===m&&bd.getFullYear()===a&&b.status==="aprovado";}).reduce((s,b)=>s+b.total,0);
+    const desp=(despesas||[]).filter(d=>{const dd=new Date(d.date);return dd.getMonth()===m&&dd.getFullYear()===a;}).reduce((s,d)=>s+(d.valor||0),0);
+    return{label:meses[m].slice(0,3),rec,desp,lucro:rec-desp};
+  });
+  const maxFluxo=Math.max(...fluxo6.map(f=>Math.max(f.rec,f.desp)),1);
+
+  // Despesas por categoria
+  const byCat={};
+  dMes.forEach(d=>{byCat[d.categoria]=(byCat[d.categoria]||0)+(d.valor||0);});
+  const catList=Object.entries(byCat).sort((a,b)=>b[1]-a[1]);
+
+  const saveDespesa=d=>{
+    setDespesas(ds=>ds.find(x=>x.id===d.id)?ds.map(x=>x.id===d.id?d:x):[...ds,{...d,id:uid()}]);
+    setModal(null);showToast("Despesa salva ✓");
+  };
+  const delDespesa=id=>{setDespesas(ds=>ds.filter(x=>x.id!==id));setModal(null);showToast("Removida","warn");};
+
+  return(
+    <div style={S.page}>
+      <PHead title="💰 Financeiro" sub={`${meses[mes]} ${ano} · Fluxo de caixa e DRE`}>
+        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+          <select style={{...S.sel,fontSize:12,padding:"6px 10px"}} value={mes} onChange={e=>setMes(Number(e.target.value))}>
+            {meses.map((m,i)=><option key={i} value={i}>{m}</option>)}
+          </select>
+          <select style={{...S.sel,fontSize:12,padding:"6px 10px"}} value={ano} onChange={e=>setAno(Number(e.target.value))}>
+            {anos.map(a=><option key={a} value={a}>{a}</option>)}
+          </select>
+          <button style={{...S.prim,fontSize:12,padding:"7px 14px",background:"#EF4444"}} onClick={()=>setModal({type:"despesa",data:null})}>+ Despesa</button>
+          <button style={{...S.prim,fontSize:12,padding:"7px 14px",background:"linear-gradient(135deg,#EF4444,#DC2626)"}} onClick={()=>exportDREPDF(budgets,despesas,mes,ano,profile,themeP,themeA)}>📄 DRE PDF</button>
+        </div>
+      </PHead>
+
+      {/* KPIs */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20}}>
+        {[
+          {ico:"💚",lbl:"Receita Aprovada",val:fmtBRL(receitaBruta),color:"#22D3A0",bg:"rgba(34,211,160,0.08)"},
+          {ico:"🔴",lbl:"Total Despesas",val:fmtBRL(totalDesp),color:"#F87171",bg:"rgba(248,113,113,0.08)"},
+          {ico:"⭐",lbl:"Lucro Líquido",val:fmtBRL(lucroLiq),color:lucroLiq>=0?"#22D3A0":"#F87171",bg:lucroLiq>=0?"rgba(34,211,160,0.08)":"rgba(248,113,113,0.08)"},
+          {ico:"📊",lbl:"Margem de Lucro",val:`${margem}%`,color:themeP,bg:`${themeP}10`},
+        ].map(k=>(
+          <div key={k.lbl} style={{...S.card,padding:16,background:k.bg,border:`1px solid ${k.color}20`}}>
+            <div style={{fontSize:20,marginBottom:6}}>{k.ico}</div>
+            <div style={{fontSize:11,color:"#64748B",fontWeight:700,textTransform:"uppercase",letterSpacing:.5,marginBottom:4}}>{k.lbl}</div>
+            <div style={{fontSize:20,fontWeight:900,color:k.color}}>{k.val}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Pipeline badge */}
+      {pipeline>0&&<div style={{padding:"10px 16px",background:"rgba(245,158,11,0.08)",border:"1px solid rgba(245,158,11,0.2)",borderRadius:12,marginBottom:18,fontSize:13,color:"#F59E0B",display:"flex",alignItems:"center",gap:8}}>
+        <span>⏳</span> <span>Pipeline aguardando aprovação: <b>{fmtBRL(pipeline)}</b></span>
+      </div>}
+
+      {/* Tabs */}
+      <div style={{display:"flex",gap:4,marginBottom:16,borderBottom:"1px solid #1E293B",paddingBottom:0}}>
+        {[{id:"fluxo",lbl:"📈 Fluxo de Caixa"},{id:"despesas",lbl:"🔴 Despesas"},{id:"dre",lbl:"📊 DRE"}].map(t=>(
+          <button key={t.id} onClick={()=>setTab(t.id)} style={{padding:"8px 16px",background:"none",border:"none",cursor:"pointer",fontSize:13,fontWeight:tab===t.id?700:500,color:tab===t.id?themeP:"#64748B",borderBottom:tab===t.id?`2px solid ${themeP}`:"2px solid transparent",marginBottom:-1}}>
+            {t.lbl}
+          </button>
+        ))}
+      </div>
+
+      {/* TAB: FLUXO DE CAIXA */}
+      {tab==="fluxo"&&(
+        <div>
+          <div style={{fontSize:12,color:"#64748B",fontWeight:700,marginBottom:12,textTransform:"uppercase",letterSpacing:.5}}>Últimos 6 meses</div>
+          <div style={{...S.card,padding:20,marginBottom:16}}>
+            {/* Legend */}
+            <div style={{display:"flex",gap:16,marginBottom:16,flexWrap:"wrap"}}>
+              {[{color:"#22D3A0",lbl:"Receita"},{color:"#F87171",lbl:"Despesas"},{color:themeP,lbl:"Lucro"}].map(l=>(
+                <div key={l.lbl} style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"#94A3B8"}}>
+                  <div style={{width:12,height:12,borderRadius:3,background:l.color}}/>{l.lbl}
+                </div>
+              ))}
+            </div>
+            {/* Bars */}
+            <div style={{display:"flex",gap:8,alignItems:"flex-end",height:180}}>
+              {fluxo6.map((m,i)=>(
+                <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
+                  <div style={{width:"100%",display:"flex",gap:2,alignItems:"flex-end",height:150}}>
+                    <div style={{flex:1,background:"#22D3A0",borderRadius:"4px 4px 0 0",height:`${(m.rec/maxFluxo)*150}px`,minHeight:m.rec>0?4:0,transition:"height .4s"}}/>
+                    <div style={{flex:1,background:"#F87171",borderRadius:"4px 4px 0 0",height:`${(m.desp/maxFluxo)*150}px`,minHeight:m.desp>0?4:0,transition:"height .4s"}}/>
+                    <div style={{flex:1,background:m.lucro>=0?themeP:"#F87171",borderRadius:"4px 4px 0 0",opacity:.7,height:`${(Math.abs(m.lucro)/maxFluxo)*150}px`,minHeight:Math.abs(m.lucro)>0?4:0,transition:"height .4s"}}/>
+                  </div>
+                  <div style={{fontSize:10,color:"#64748B",fontWeight:600}}>{m.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* Tabela resumo */}
+          <div style={{...S.card,padding:0,overflow:"hidden"}}>
+            <table style={{width:"100%",borderCollapse:"collapse"}}>
+              <thead><tr style={{background:"#0F172A"}}>
+                {["Mês","Receita","Despesas","Lucro","Margem"].map(h=><th key={h} style={{padding:"10px 14px",fontSize:11,fontWeight:700,color:"#475569",textAlign:"left",borderBottom:"1px solid #1E293B",textTransform:"uppercase"}}>{h}</th>)}
+              </tr></thead>
+              <tbody>{fluxo6.map((m,i)=>{
+                const mg=m.rec>0?((m.lucro/m.rec)*100).toFixed(0):0;
+                return<tr key={i} style={{borderBottom:"1px solid #0F172A"}} className="trow">
+                  <td style={{...S.td,fontWeight:600}}>{m.label}</td>
+                  <td style={{...S.td,color:"#22D3A0",fontWeight:600}}>{fmtBRL(m.rec)}</td>
+                  <td style={{...S.td,color:"#F87171",fontWeight:600}}>{fmtBRL(m.desp)}</td>
+                  <td style={{...S.td,color:m.lucro>=0?"#22D3A0":"#F87171",fontWeight:700}}>{fmtBRL(m.lucro)}</td>
+                  <td style={S.td}><span style={{padding:"2px 8px",borderRadius:20,background:Number(mg)>=0?"rgba(34,211,160,.1)":"rgba(248,113,113,.1)",color:Number(mg)>=0?"#22D3A0":"#F87171",fontSize:11,fontWeight:700}}>{mg}%</span></td>
+                </tr>;
+              })}</tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* TAB: DESPESAS */}
+      {tab==="despesas"&&(
+        <div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+            {/* Por categoria */}
+            <div style={S.card}>
+              <div style={{fontSize:12,color:"#64748B",fontWeight:700,textTransform:"uppercase",letterSpacing:.5,marginBottom:12}}>Por Categoria</div>
+              {catList.length===0?<div style={{textAlign:"center",padding:"24px 0",color:"#475569",fontSize:13}}>Sem despesas neste mês</div>:
+                catList.map(([cat,val])=>(
+                  <div key={cat} style={{marginBottom:10}}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                      <span style={{fontSize:12,color:"#94A3B8"}}>{cat}</span>
+                      <span style={{fontSize:12,fontWeight:700,color:"#F87171"}}>{fmtBRL(val)}</span>
+                    </div>
+                    <div style={{height:5,background:"#1E293B",borderRadius:3}}>
+                      <div style={{height:"100%",width:`${totalDesp>0?(val/totalDesp)*100:0}%`,background:"linear-gradient(90deg,#F87171,#EF4444)",borderRadius:3}}/>
+                    </div>
+                    <div style={{fontSize:10,color:"#475569",marginTop:2}}>{totalDesp>0?((val/totalDesp)*100).toFixed(0):0}% do total</div>
+                  </div>
+                ))
+              }
+            </div>
+            {/* Resumo rápido */}
+            <div style={S.card}>
+              <div style={{fontSize:12,color:"#64748B",fontWeight:700,textTransform:"uppercase",letterSpacing:.5,marginBottom:12}}>Resumo do Mês</div>
+              <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                <div style={{padding:"12px",background:"rgba(34,211,160,.06)",borderRadius:10,border:"1px solid rgba(34,211,160,.2)"}}>
+                  <div style={{fontSize:11,color:"#64748B"}}>Receita aprovada</div>
+                  <div style={{fontSize:20,fontWeight:900,color:"#22D3A0"}}>{fmtBRL(receitaBruta)}</div>
+                </div>
+                <div style={{padding:"12px",background:"rgba(248,113,113,.06)",borderRadius:10,border:"1px solid rgba(248,113,113,.2)"}}>
+                  <div style={{fontSize:11,color:"#64748B"}}>Total despesas ({dMes.length} lançamentos)</div>
+                  <div style={{fontSize:20,fontWeight:900,color:"#F87171"}}>{fmtBRL(totalDesp)}</div>
+                </div>
+                <div style={{padding:"12px",background:`${lucroLiq>=0?"rgba(34,211,160":"rgba(248,113,113"},.06)`,borderRadius:10,border:`1px solid ${lucroLiq>=0?"rgba(34,211,160":"rgba(248,113,113"},.2)`}}>
+                  <div style={{fontSize:11,color:"#64748B"}}>Lucro líquido</div>
+                  <div style={{fontSize:20,fontWeight:900,color:lucroLiq>=0?"#22D3A0":"#F87171"}}>{fmtBRL(lucroLiq)}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Lista de despesas */}
+          {dMes.length===0?(
+            <div style={{textAlign:"center",padding:"48px 0",color:"#475569"}}>
+              <div style={{fontSize:40,marginBottom:12}}>💸</div>
+              <div style={{fontSize:14,fontWeight:600,color:"#64748B",marginBottom:8}}>Nenhuma despesa neste mês</div>
+              <button style={{...S.prim,background:"#EF4444"}} onClick={()=>setModal({type:"despesa",data:null})}>+ Registrar despesa</button>
+            </div>
+          ):(
+            <div style={{...S.card,padding:0,overflow:"hidden"}}>
+              <table style={{width:"100%",borderCollapse:"collapse"}}>
+                <thead><tr style={{background:"#0F172A"}}>
+                  {["Data","Categoria","Descrição","Valor",""].map(h=><th key={h} style={{padding:"10px 14px",fontSize:11,fontWeight:700,color:"#475569",textAlign:"left",borderBottom:"1px solid #1E293B",textTransform:"uppercase"}}>{h}</th>)}
+                </tr></thead>
+                <tbody>{dMes.sort((a,b)=>new Date(b.date)-new Date(a.date)).map(d=>(
+                  <tr key={d.id} style={{borderBottom:"1px solid #0F172A"}} className="trow">
+                    <td style={{...S.td,fontSize:12,color:"#64748B"}}>{d.date}</td>
+                    <td style={S.td}><span style={{padding:"2px 8px",background:"rgba(248,113,113,.1)",borderRadius:20,color:"#F87171",fontSize:11,fontWeight:600}}>{d.categoria}</span></td>
+                    <td style={{...S.td,color:"#94A3B8"}}>{d.desc||"—"}</td>
+                    <td style={{...S.td,color:"#F87171",fontWeight:700}}>{fmtBRL(d.valor)}</td>
+                    <td style={S.td}>
+                      <div style={S.acts}>
+                        <TB c={themeP} t="Editar" onClick={()=>setModal({type:"despesa",data:d})}>✏️</TB>
+                        <TB c="#F87171" t="Excluir" onClick={()=>delDespesa(d.id)}>🗑️</TB>
+                      </div>
+                    </td>
+                  </tr>
+                ))}</tbody>
+                <tfoot><tr style={{background:"rgba(248,113,113,.05)"}}>
+                  <td colSpan="3" style={{padding:"10px 14px",fontWeight:700,fontSize:13,color:"#F87171",borderTop:"1px solid #1E293B"}}>TOTAL</td>
+                  <td style={{padding:"10px 14px",fontWeight:900,fontSize:15,color:"#F87171",borderTop:"1px solid #1E293B"}}>{fmtBRL(totalDesp)}</td>
+                  <td style={{borderTop:"1px solid #1E293B"}}/>
+                </tr></tfoot>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB: DRE */}
+      {tab==="dre"&&(
+        <div style={{maxWidth:640}}>
+          <div style={S.card}>
+            <div style={{fontSize:13,fontWeight:700,color:"#94A3B8",marginBottom:16,textAlign:"center",textTransform:"uppercase",letterSpacing:1}}>
+              Demonstrativo de Resultado — {meses[mes]} {ano}
+            </div>
+            {[
+              {lbl:"(+) Receita Bruta",val:receitaBruta,color:"#22D3A0",bold:false},
+              {lbl:"(−) Despesas Operacionais",val:totalDesp,color:"#F87171",bold:false,neg:true},
+              null,
+              {lbl:"(=) LUCRO LÍQUIDO",val:lucroLiq,color:lucroLiq>=0?"#22D3A0":"#F87171",bold:true},
+            ].map((row,i)=>row===null?(
+              <div key={i} style={{borderTop:"2px solid #1E293B",margin:"8px 0"}}/>
+            ):(
+              <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:`${row.bold?14:10}px 0`,borderBottom:row.bold?"none":"1px solid #0F172A"}}>
+                <span style={{fontSize:row.bold?15:13,fontWeight:row.bold?800:500,color:row.bold?"#F1F5F9":"#94A3B8"}}>{row.lbl}</span>
+                <span style={{fontSize:row.bold?18:14,fontWeight:row.bold?900:600,color:row.color}}>{row.neg?"-":""}{fmtBRL(row.val)}</span>
+              </div>
+            ))}
+            <div style={{marginTop:16,padding:"12px 16px",background:`${themeP}10`,borderRadius:10,border:`1px solid ${themeP}25`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{fontSize:13,color:"#94A3B8",fontWeight:600}}>Margem de Lucro</span>
+              <span style={{fontSize:22,fontWeight:900,color:themeP}}>{margem}%</span>
+            </div>
+            {pipeline>0&&<div style={{marginTop:10,padding:"10px 14px",background:"rgba(245,158,11,.08)",borderRadius:10,border:"1px solid rgba(245,158,11,.2)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{fontSize:12,color:"#F59E0B"}}>⏳ Pipeline (aguardando)</span>
+              <span style={{fontSize:14,fontWeight:700,color:"#F59E0B"}}>{fmtBRL(pipeline)}</span>
+            </div>}
+            <button style={{...S.prim,background:"linear-gradient(135deg,#EF4444,#DC2626)",width:"100%",marginTop:16}} onClick={()=>exportDREPDF(budgets,despesas,mes,ano,profile,themeP,themeA)}>
+              📄 Exportar DRE em PDF
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal despesa */}
+      {modal?.type==="despesa"&&(
+        <ModalDespesa data={modal.data} onSave={saveDespesa} onDelete={modal.data?()=>delDespesa(modal.data.id):null} onClose={()=>setModal(null)} themeP={themeP}/>
+      )}
+    </div>
+  );
+}
+
+function ModalDespesa({data,onSave,onDelete,onClose,themeP}){
+  const [f,sf]=useState(data||{categoria:"Material",desc:"",valor:0,date:today(),obs:""});
+  const set=(k,v)=>sf(p=>({...p,[k]:v}));
+  const ok=f.valor>0;
+  return(
+    <Overlay onClose={onClose}>
+      <div style={S.mhead}>
+        <div><div style={S.mtitle}>{data?"Editar Despesa":"Nova Despesa"}</div><div style={S.msub}>Registro financeiro</div></div>
+        <XBtn onClick={onClose}/>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+        <FL label="Categoria">
+          <select style={S.sel} value={f.categoria} onChange={e=>set("categoria",e.target.value)}>
+            {CATS_DESP.map(c=><option key={c}>{c}</option>)}
+          </select>
+        </FL>
+        <FL label="Data">
+          <input style={S.inp} type="date" value={f.date} onChange={e=>set("date",e.target.value)}/>
+        </FL>
+        <div style={{gridColumn:"1/-1"}}>
+          <FL label="Descrição"><input style={S.inp} value={f.desc} onChange={e=>set("desc",e.target.value)} placeholder="Ex: Fio elétrico, gasolina..."/></FL>
+        </div>
+        <FL label="Valor (R$) *">
+          <input style={S.inp} type="number" min="0" step="0.01" value={f.valor} onChange={e=>set("valor",Number(e.target.value))}/>
+        </FL>
+        <FL label="Observações">
+          <input style={S.inp} value={f.obs||""} onChange={e=>set("obs",e.target.value)} placeholder="Nota fiscal, fornecedor..."/>
+        </FL>
+      </div>
+      <div style={{display:"flex",gap:8,marginTop:18,justifyContent:"space-between"}}>
+        <div>{onDelete&&<button style={{...S.ghost,borderColor:"rgba(248,113,113,.3)",color:"#F87171",fontSize:12}} onClick={onDelete}>🗑️ Excluir</button>}</div>
+        <div style={{display:"flex",gap:8}}>
+          <button style={S.ghost} onClick={onClose}>Cancelar</button>
+          <button style={{...S.prim,background:"#EF4444",opacity:ok?1:.4,cursor:ok?"pointer":"not-allowed"}} onClick={()=>ok&&onSave(f)}>{data?"💾 Salvar":"+ Registrar"}</button>
         </div>
       </div>
     </Overlay>

@@ -1,4 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  "https://oehdkvelzjaahddsuivz.supabase.co",
+  "sb_publishable_jGDj5i2XTvo2ADwGcUzfSg_xliD2TiP"
+);
 
 /* ═══════════════════════════════════════════════════════════════════════════
    ORCAPRO v7 — Perfis Únicos · Logo · Cores Personalizadas · Identidade Visual

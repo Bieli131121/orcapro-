@@ -857,9 +857,59 @@ function ModalUserForm({data,onSave,onClose}){
 
 /* ═══ APP SHELL ══════════════════════════════════════════════════════════ */
 function AppShell({user,onLogout}){
-  const [data,setData,loadD]=useStorage(`orc6:data:${user.id}`,null,false);
-  useEffect(()=>{if(!loadD&&data===null)setData(seedData(user.id));},[loadD,data]); //eslint-disable-line
-  if(loadD||data===null)return<Splash user={user}/>;
+  const [data,setDataState]=useState(null);
+  const [loading,setLoading]=useState(true);
+  const saveTimeout=useRef(null);
+
+  // Carrega dados do Supabase ao montar
+  useEffect(()=>{
+    supabase.from("user_data").select("*").eq("user_id",user.id).single()
+      .then(({data:row,error})=>{
+        if(row){
+          setDataState({
+            budgets:row.budgets||[],
+            clients:row.clients||[],
+            templates:row.templates||[],
+            profile:row.profile||{},
+            activity:row.activity||[],
+            fotos:row.fotos||{},
+            notificacoes:row.notificacoes||[],
+            estoque:row.estoque||[],
+            chatMsgs:row.chat_msgs||[],
+            orcCounter:row.orc_counter||1,
+          });
+        } else {
+          // Primeiro acesso: cria registro vazio
+          const seed=seedData(user.id);
+          supabase.from("user_data").insert([{user_id:user.id,...toDbRow(seed),orc_counter:1}])
+            .then(()=>setDataState({...seed,orcCounter:1}));
+        }
+        setLoading(false);
+      });
+  },[user.id]); // eslint-disable-line
+
+  // Salva no Supabase com debounce de 800ms para não sobrecarregar
+  const saveToDb=useCallback((d)=>{
+    if(saveTimeout.current)clearTimeout(saveTimeout.current);
+    saveTimeout.current=setTimeout(()=>{
+      supabase.from("user_data").upsert({
+        user_id:user.id,...toDbRow(d),orc_counter:d.orcCounter||1
+      },{onConflict:"user_id"}).then(({error})=>{
+        if(error)console.error("Erro ao salvar dados:",error);
+      });
+    },800);
+  },[user.id]);
+
+  const setData=useCallback(fn=>{
+    setDataState(prev=>{
+      const next=typeof fn==="function"?fn(prev):fn;
+      saveToDb(next);
+      return next;
+    });
+  },[saveToDb]);
+
+  if(loading||data===null)return<Splash user={user}/>;
+
   const patch=k=>fn=>setData(d=>({...d,[k]:typeof fn==="function"?fn(d[k]):fn}));
   const profile={...BLANK_PROFILE,...(data.profile||{})};
   const theme=THEMES.find(t=>t.id===profile.themeId)||THEMES[0];
@@ -868,30 +918,44 @@ function AppShell({user,onLogout}){
   return<App user={user} data={{...data,profile}} patch={patch} themeP={P} themeA={A} onLogout={onLogout}/>;
 }
 
+// Converte estado interno → colunas do banco
+function toDbRow(d){
+  return{
+    budgets:d.budgets||[],
+    clients:d.clients||[],
+    templates:d.templates||[],
+    profile:d.profile||{},
+    activity:d.activity||[],
+    fotos:d.fotos||{},
+    notificacoes:d.notificacoes||[],
+    estoque:d.estoque||[],
+    chat_msgs:d.chatMsgs||[],
+    orc_counter:d.orcCounter||1,
+  };
+}
+
 /* ═══ APP ════════════════════════════════════════════════════════════════ */
 function App({user,data,patch,themeP,themeA,onLogout}){
-  const {budgets=[],clients=[],templates=[],profile={},activity=[],fotos={},notificacoes=[],estoque=[]}=data;
+  const {budgets=[],clients=[],templates=[],profile={},activity=[],fotos={},notificacoes=[],estoque=[],orcCounter=1,chatMsgs=[]}=data;
   const setBudgets=patch("budgets");const setClients=patch("clients");
   const setTemplates=patch("templates");const setProfile=patch("profile");
   const setActivity=patch("activity");
   const setFotos=patch("fotos");
   const setNotificacoes=patch("notificacoes");
   const setEstoque=patch("estoque");
+  const setOrcCounter=patch("orcCounter");
+  const setChatMsgs=patch("chatMsgs");
   const [page,setPage]=useState("dashboard");
   const [modal,setModal]=useState(null);
   const [toast,setToast]=useState(null);
   const [filter,setFilter]=useState({status:"todos",cat:"todas",q:"",sort:"newest"});
   const [sideOpen,setSideOpen]=useState(true);
-  const [orcCounter,setOrcCounter]=useStorage(`orc6:counter:${user.id}`,1,false);
-  const [chatMsgs,setChatMsgs]=useStorage(`orc6:chat:${user.id}`,[],true);
   const [notifBell,setNotifBell]=useState(false);
   const showToast=(msg,type="ok")=>{setToast({msg,type});setTimeout(()=>setToast(null),3000);};
   const addNotif=(msg,icon="🔔",link=null)=>setNotificacoes(ns=>[{id:uid(),msg,icon,link,read:false,ts:new Date().toLocaleString("pt-BR")},...(ns||[])].slice(0,50));
   const markNotifsRead=()=>setNotificacoes(ns=>(ns||[]).map(n=>({...n,read:true})));
   const addAct=desc=>setActivity(a=>[{id:uid(),desc,ts:new Date().toLocaleString("pt-BR")},...(a||[])].slice(0,50));
-  // nextNum usa contador persistente para evitar duplicatas ao deletar orçamentos
   const nextNum=useMemo(()=>`ORC-${String(orcCounter||1).padStart(3,"0")}`,[orcCounter]);
-  // auto-expirar: usa ref para evitar loop infinito sem suprimir lint
   const budgetsRef=useRef(budgets);
   budgetsRef.current=budgets;
   useEffect(()=>{
@@ -904,7 +968,7 @@ function App({user,data,patch,themeP,themeA,onLogout}){
         return{...b,status:"expirado"};
       return b;
     }));
-  },[setBudgets]); // setBudgets é estável (vem de useCallback)
+  },[setBudgets]);
 
   const saveBudget=f=>{
     const total=calcTot(f.items,f.discount,f.tax);
@@ -912,7 +976,7 @@ function App({user,data,patch,themeP,themeA,onLogout}){
     else{
       const n={...f,id:uid(),num:nextNum,userId:user.id,total,createdAt:today()};
       setBudgets(bs=>[n,...bs]);
-      setOrcCounter(c=>(c||1)+1); // incrementa contador persistente
+      setOrcCounter(c=>(c||1)+1);
       addAct(`Criou ${nextNum}`);
       addNotif(`Novo orçamento criado: ${nextNum} para ${f.clientName||"cliente"}`,"📋");
     }

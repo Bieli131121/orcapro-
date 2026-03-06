@@ -1052,7 +1052,7 @@ function App({user,data,patch,themeP,themeA,onLogout}){
       taxa:budgets.length?Math.round(ap.length/budgets.length*100):0,
       tick:ap.length?Math.round(ap.reduce((s,b)=>s+b.total,0)/ap.length):0};
   },[budgets]);
-  const plan=profile.plan||user.plan||"basico";const planInfo=PLANS[plan]||PLANS.basico;
+  const plan=user.plan||"basico";const planInfo=PLANS[plan]||PLANS.basico;
   const planPct=Math.round((budgets.length/planInfo.max)*100);
   const unreadChat=(chatMsgs||[]).filter(m=>!m.read&&m.from==="admin").length;
   const hasFeature=f=>planInfo.features?.includes(f)??true;

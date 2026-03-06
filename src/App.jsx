@@ -39,7 +39,11 @@ function useDevice(){
 const CATS   = ["Elétrica","Hidráulica","Marcenaria","Pintura","Mecânica","Informática","Limpeza","Jardinagem","Climatização","Outro"];
 const UNITS  = ["un","m","m²","m³","kg","l","serv","hr","dia","kit","cx","pc","vb"];
 const PROFS  = ["Eletricista","Encanador","Pedreiro","Pintor","Mecânico","Marceneiro","Técnico em TI","Jardineiro","Climatizador","Outro"];
-const PLANS  = { basico:{label:"Básico",color:"#64748B",max:20,price:29}, pro:{label:"Pro",color:"#818CF8",max:100,price:49}, premium:{label:"Premium",color:"#F59E0B",max:999,price:89} };
+const PLANS = {
+  basico:   {label:"Básico",   color:"#64748B", price:29,  max:30,  ico:"⚡", features:["dashboard","lista","clientes","templates","atividade","notificacoes","chat","config"],           locked:["relatorio","estoque","financeiro","share","assinatura","localizacao","fotos","docfiscal"]},
+  pro:      {label:"Pro",      color:"#818CF8", price:49,  max:200, ico:"🚀", features:["dashboard","lista","clientes","relatorio","templates","atividade","notificacoes","chat","estoque","financeiro","config","share","assinatura","localizacao","fotos","docfiscal"], locked:[]},
+  vitalicio:{label:"Vitalício",color:"#F59E0B", price:197, max:9999,ico:"👑", features:["dashboard","lista","clientes","relatorio","templates","atividade","notificacoes","chat","estoque","financeiro","config","share","assinatura","localizacao","fotos","docfiscal"], locked:[]},
+};
 const THEMES = [
   {id:"violeta", name:"Violeta",    primary:"#818CF8", secondary:"#6366F1", accent:"#22D3A0"},
   {id:"esmeralda",name:"Esmeralda", primary:"#10B981", secondary:"#059669", accent:"#60A5FA"},
@@ -1048,12 +1052,26 @@ function App({user,data,patch,themeP,themeA,onLogout}){
       taxa:budgets.length?Math.round(ap.length/budgets.length*100):0,
       tick:ap.length?Math.round(ap.reduce((s,b)=>s+b.total,0)/ap.length):0};
   },[budgets]);
-  const plan=profile.plan||"pro";const planInfo=PLANS[plan]||PLANS.pro;
+  const plan=profile.plan||user.plan||"basico";const planInfo=PLANS[plan]||PLANS.basico;
   const planPct=Math.round((budgets.length/planInfo.max)*100);
   const unreadChat=(chatMsgs||[]).filter(m=>!m.read&&m.from==="admin").length;
+  const hasFeature=f=>planInfo.features?.includes(f)??true;
+  const isLocked=f=>planInfo.locked?.includes(f)??false;
   const {isMobile}=useDevice();
   const [maisOpen,setMaisOpen]=useState(false);
-  const NAVS=[{id:"dashboard",ico:"📊",lbl:"Dashboard"},{id:"lista",ico:"📋",lbl:"Orçamentos"},{id:"clientes",ico:"👥",lbl:"Clientes"},{id:"relatorio",ico:"📈",lbl:"Relatórios"},{id:"templates",ico:"📄",lbl:"Templates"},{id:"atividade",ico:"🕐",lbl:"Atividades"},{id:"notificacoes",ico:"🔔",lbl:"Notificações",badge:notificacoes.filter(n=>!n.read).length},{id:"chat",ico:"💬",lbl:"Mensagens",badge:unreadChat},{id:"estoque",ico:"📦",lbl:"Estoque"},{id:"financeiro",ico:"💰",lbl:"Financeiro"},{id:"config",ico:"⚙️",lbl:"Meu Perfil"}];
+  const NAVS=[
+    {id:"dashboard",ico:"📊",lbl:"Dashboard"},
+    {id:"lista",ico:"📋",lbl:"Orçamentos"},
+    {id:"clientes",ico:"👥",lbl:"Clientes"},
+    {id:"relatorio",ico:"📈",lbl:"Relatórios",lock:isLocked("relatorio")},
+    {id:"templates",ico:"📄",lbl:"Templates"},
+    {id:"atividade",ico:"🕐",lbl:"Atividades"},
+    {id:"notificacoes",ico:"🔔",lbl:"Notificações",badge:notificacoes.filter(n=>!n.read).length},
+    {id:"chat",ico:"💬",lbl:"Mensagens",badge:unreadChat},
+    {id:"estoque",ico:"📦",lbl:"Estoque",lock:isLocked("estoque")},
+    {id:"financeiro",ico:"💰",lbl:"Financeiro",lock:isLocked("financeiro")},
+    {id:"config",ico:"⚙️",lbl:"Meu Perfil"},
+  ];
   const MOBILE_NAVS=[{id:"dashboard",ico:"📊",lbl:"Início"},{id:"lista",ico:"📋",lbl:"Orçamentos"},{id:"clientes",ico:"👥",lbl:"Clientes"},{id:"config",ico:"⚙️",lbl:"Perfil"},{id:"mais",ico:"☰",lbl:"Mais"}];
 
   const pageContent=(
@@ -1061,14 +1079,14 @@ function App({user,data,patch,themeP,themeA,onLogout}){
       {page==="dashboard" &&<PageDash stats={stats} budgets={budgets} user={user} profile={profile} clients={clients} themeP={themeP} themeA={themeA} setModal={setModal} setStatus={setStatus} sendWA={sendWA} setPage={setPage}/>}
       {page==="lista"     &&<PageLista filtered={filtered} filter={filter} setFilter={setFilter} themeP={themeP} themeA={themeA} setModal={setModal} setStatus={setStatus} sendWA={sendWA} delBudget={delBudget}/>}
       {page==="clientes"  &&<PageClientes budgets={budgets} clients={clients} setModal={setModal}/>}
-      {page==="relatorio" &&<PageRelatorio budgets={budgets} stats={stats} clients={clients} profile={profile} themeP={themeP} themeA={themeA}/>}
+      {page==="relatorio" &&(isLocked("relatorio")?<PageLocked feature="relatorio" plan={plan} planInfo={planInfo} themeP={themeP}/>:<PageRelatorio budgets={budgets} stats={stats} clients={clients} profile={profile} themeP={themeP} themeA={themeA}/>)}
       {page==="templates" &&<PageTemplates templates={templates} setModal={setModal}/>}
       {page==="atividade" &&<PageAtividade activity={activity}/>}
       {page==="config"       &&<PageConfig profile={profile} setProfile={setProfile} user={user} themeP={themeP} themeA={themeA} showToast={showToast}/>}
       {page==="notificacoes"  &&<PageNotificacoes notificacoes={notificacoes} markRead={markNotifsRead} setNotificacoes={setNotificacoes} themeP={themeP}/>}
       {page==="chat"          &&<PageChat chatMsgs={chatMsgs} setChatMsgs={setChatMsgs} user={user} themeP={themeP} themeA={themeA}/>}
-      {page==="estoque"       &&<PageEstoque estoque={estoque} setEstoque={setEstoque} themeP={themeP} themeA={themeA} showToast={showToast}/>}
-      {page==="financeiro"    &&<PageFinanceiro budgets={budgets} despesas={despesas} setDespesas={setDespesas} profile={profile} themeP={themeP} themeA={themeA} showToast={showToast}/>}
+      {page==="estoque"       &&(isLocked("estoque")?<PageLocked feature="estoque" plan={plan} planInfo={planInfo} themeP={themeP}/>:<PageEstoque estoque={estoque} setEstoque={setEstoque} themeP={themeP} themeA={themeA} showToast={showToast}/>)}
+      {page==="financeiro"    &&(isLocked("financeiro")?<PageLocked feature="financeiro" plan={plan} planInfo={planInfo} themeP={themeP}/>:<PageFinanceiro budgets={budgets} despesas={despesas} setDespesas={setDespesas} profile={profile} themeP={themeP} themeA={themeA} showToast={showToast}/>)}
     </main>
   );
 
@@ -1083,7 +1101,7 @@ function App({user,data,patch,themeP,themeA,onLogout}){
       {modal?.type==="preview"    &&<ModalPreview data={modal.data} profile={profile} onClose={()=>setModal(null)} sendWA={sendWA} themeP={themeP} themeA={themeA}/>}
       {modal?.type==="assinatura"  &&<ModalAssinatura data={modal.data} onSave={b=>{setBudgets(bs=>bs.map(x=>x.id===b.id?b:x));setModal(null);showToast("Assinatura salva ✓");}} onClose={()=>setModal(null)} themeP={themeP} themeA={themeA}/>}
       {modal?.type==="localizacao" &&<ModalLocalizacao data={modal.data} onSave={b=>{setBudgets(bs=>bs.map(x=>x.id===b.id?b:x));setModal(null);showToast("Localização salva ✓");}} onClose={()=>setModal(null)} themeP={themeP}/>}
-      {modal?.type==="share"      &&<ModalCompartilhar data={modal.data} profile={profile} user={user} onClose={()=>setModal(null)} themeP={themeP} themeA={themeA} onStatusUpdate={b=>{setBudgets(bs=>bs.map(x=>x.id===b.id?b:x));showToast(b.status==="aprovado"?"✅ Aprovado pelo cliente!":"❌ Recusado pelo cliente",b.status==="aprovado"?"ok":"warn");}}/>}
+      {modal?.type==="share"      &&(isLocked("share")?<ModalUpgrade feature="share" plan={plan} onClose={()=>setModal(null)} themeP={themeP}/>:<ModalCompartilhar data={modal.data} profile={profile} user={user} onClose={()=>setModal(null)} themeP={themeP} themeA={themeA} onStatusUpdate={b=>{setBudgets(bs=>bs.map(x=>x.id===b.id?b:x));showToast(b.status==="aprovado"?"✅ Aprovado pelo cliente!":"❌ Recusado pelo cliente",b.status==="aprovado"?"ok":"warn");}}/>)}}
       {toast&&<Toast msg={toast.msg} type={toast.type} color={themeP}/>}
     </React.Fragment>
   );
@@ -1182,10 +1200,10 @@ function App({user,data,patch,themeP,themeA,onLogout}){
         </div>
         <nav style={S.nav}>
           {NAVS.map(n=>(
-            <button key={n.id} style={{...S.nb,...(page===n.id?{...S.nba,background:`${themeP}12`,color:themeP}:{})}} onClick={()=>setPage(n.id)} title={n.lbl}>
-              <span style={{fontSize:16,flexShrink:0,width:22,textAlign:"center"}}>{n.ico}</span>
-              {sideOpen&&<React.Fragment><span style={{flex:1}}>{n.lbl}</span>{page===n.id&&<span style={{...S.ndot,background:themeP}}/>}</React.Fragment>}
-              {n.badge>0&&<span style={{position:"absolute",top:5,right:sideOpen?8:2,background:"#F87171",color:"#fff",fontSize:9,fontWeight:800,borderRadius:"50%",minWidth:15,height:15,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 3px"}}>{n.badge>9?"9+":n.badge}</span>}
+            <button key={n.id} style={{...S.nb,...(page===n.id?{...S.nba,background:`${themeP}12`,color:themeP}:{}),opacity:n.lock?0.5:1}} onClick={()=>setPage(n.id)} title={n.lock?`${n.lbl} — disponível no Plano Pro`:n.lbl}>
+              <span style={{fontSize:16,flexShrink:0,width:22,textAlign:"center"}}>{n.lock?"🔒":n.ico}</span>
+              {sideOpen&&<React.Fragment><span style={{flex:1}}>{n.lbl}</span>{n.lock?<span style={{fontSize:9,color:"#F59E0B",fontWeight:700,background:"rgba(245,158,11,.15)",padding:"1px 5px",borderRadius:8}}>PRO</span>:page===n.id&&<span style={{...S.ndot,background:themeP}}/>}</React.Fragment>}
+              {n.badge>0&&!n.lock&&<span style={{position:"absolute",top:5,right:sideOpen?8:2,background:"#F87171",color:"#fff",fontSize:9,fontWeight:800,borderRadius:"50%",minWidth:15,height:15,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 3px"}}>{n.badge>9?"9+":n.badge}</span>}
             </button>
           ))}
         </nav>
@@ -2912,6 +2930,80 @@ function PublicBudgetPage({token}){
         )}
       </div>
     </div>
+  );
+}
+
+
+/* ═══ PLANOS & BLOQUEIO ═══════════════════════════════════════════════ */
+const FEATURE_LABELS = {
+  relatorio:"Relatórios Avançados",estoque:"Gestão de Estoque",financeiro:"Módulo Financeiro / DRE",
+  share:"Compartilhar Orçamento",assinatura:"Assinatura Digital",localizacao:"Localização do Serviço",
+  fotos:"Galeria de Fotos",docfiscal:"Documentos Fiscais",
+};
+
+function PageLocked({feature,plan,planInfo,themeP}){
+  return(
+    <div style={{...S.page,display:"flex",alignItems:"center",justifyContent:"center",minHeight:400}}>
+      <div style={{textAlign:"center",maxWidth:480,padding:"0 20px"}}>
+        <div style={{fontSize:64,marginBottom:16}}>🔒</div>
+        <div style={{fontSize:22,fontWeight:900,color:"#F1F5F9",marginBottom:8}}>{FEATURE_LABELS[feature]||feature}</div>
+        <div style={{fontSize:14,color:"#64748B",marginBottom:24,lineHeight:1.6}}>
+          Este recurso não está disponível no seu plano atual.<br/>
+          Faça upgrade para o <b style={{color:"#818CF8"}}>Plano Pro</b> ou <b style={{color:"#F59E0B"}}>Vitalício</b> para desbloquear.
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:24}}>
+          {[
+            {key:"pro",ico:"🚀",price:"R$ 49/mês",desc:"Acesso completo a todos os recursos"},
+            {key:"vitalicio",ico:"👑",price:"R$ 197 único",desc:"Pagamento único, acesso vitalício"},
+          ].map(p=>(
+            <div key={p.key} style={{padding:"16px",background:"#0F172A",borderRadius:14,border:`1px solid ${PLANS[p.key].color}30`,textAlign:"left"}}>
+              <div style={{fontSize:24,marginBottom:6}}>{p.ico}</div>
+              <div style={{fontSize:13,fontWeight:800,color:PLANS[p.key].color,marginBottom:4}}>{PLANS[p.key].label}</div>
+              <div style={{fontSize:16,fontWeight:900,color:"#F1F5F9",marginBottom:4}}>{p.price}</div>
+              <div style={{fontSize:11,color:"#64748B"}}>{p.desc}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{padding:"12px 16px",background:"rgba(129,140,248,.06)",border:"1px solid rgba(129,140,248,.2)",borderRadius:12,fontSize:13,color:"#94A3B8"}}>
+          💬 Entre em contato com o administrador para fazer o upgrade do seu plano.
+        </div>
+        <div style={{marginTop:16,fontSize:12,color:"#475569"}}>Plano atual: <b style={{color:PLANS[plan]?.color||"#64748B"}}>{PLANS[plan]?.label||plan}</b></div>
+      </div>
+    </div>
+  );
+}
+
+function ModalUpgrade({feature,plan,onClose,themeP}){
+  return(
+    <Overlay onClose={onClose}>
+      <div style={S.mhead}>
+        <div><div style={S.mtitle}>🔒 Recurso Bloqueado</div><div style={S.msub}>{FEATURE_LABELS[feature]||feature}</div></div>
+        <XBtn onClick={onClose}/>
+      </div>
+      <div style={{textAlign:"center",padding:"16px 0"}}>
+        <div style={{fontSize:48,marginBottom:12}}>🚀</div>
+        <div style={{fontSize:16,fontWeight:700,color:"#F1F5F9",marginBottom:8}}>Disponível no Plano Pro</div>
+        <div style={{fontSize:13,color:"#64748B",marginBottom:20,lineHeight:1.6}}>
+          Faça upgrade para desbloquear <b>{FEATURE_LABELS[feature]}</b> e todos os recursos avançados.
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:20}}>
+          {[
+            {key:"pro",label:"Plano Pro",price:"R$ 49/mês",color:"#818CF8"},
+            {key:"vitalicio",label:"Vitalício",price:"R$ 197 único",color:"#F59E0B"},
+          ].map(p=>(
+            <div key={p.key} style={{padding:"14px 16px",background:"#0F172A",borderRadius:12,border:`1px solid ${p.color}30`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div style={{fontSize:13,fontWeight:700,color:p.color}}>{p.label}</div>
+              <div style={{fontSize:15,fontWeight:900,color:"#F1F5F9"}}>{p.price}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{fontSize:12,color:"#475569",padding:"10px",background:"#0F172A",borderRadius:10}}>
+          Entre em contato com o administrador para fazer o upgrade.
+        </div>
+        <div style={{marginTop:12,fontSize:11,color:"#475569"}}>Plano atual: <b style={{color:PLANS[plan]?.color||"#64748B"}}>{PLANS[plan]?.label||plan}</b></div>
+      </div>
+      <button style={{...S.ghost,width:"100%",marginTop:8}} onClick={onClose}>Fechar</button>
+    </Overlay>
   );
 }
 

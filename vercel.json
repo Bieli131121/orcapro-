@@ -1,5 +1,1 @@
-﻿{
-  "rewrites": [
-    { "source": "/o/:token", "destination": "/" }
-  ]
-}
+{"rewrites":[{"source":"/o/:token","destination":"/"}]}

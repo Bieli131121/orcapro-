@@ -327,6 +327,14 @@ function useStorage(key,fallback){
 
 /* ═══ ROOT ═══════════════════════════════════════════════════════════════ */
 export default function Root(){
+  // Detect public budget link: /o/TOKEN
+  const token=useMemo(()=>{
+    const p=window.location.pathname;
+    const m=p.match(/^\/o\/([a-zA-Z0-9_-]+)$/);
+    return m?m[1]:null;
+  },[]);
+  if(token)return<React.Fragment><style>{GCSS}</style><PublicBudgetPage token={token}/></React.Fragment>;
+
   const[users,setUsers]=useState([]);
   const[session,setSession]=useState(()=>{try{return JSON.parse(localStorage.getItem("orc6:session"));}catch{return null;}});
   const[loading,setLoading]=useState(true);
@@ -1035,6 +1043,7 @@ function App({user,data,patch,themeP,themeA,onLogout}){
       {modal?.type==="preview"    &&<ModalPreview data={modal.data} profile={profile} onClose={()=>setModal(null)} sendWA={sendWA} themeP={themeP} themeA={themeA}/>}
       {modal?.type==="assinatura"  &&<ModalAssinatura data={modal.data} onSave={b=>{setBudgets(bs=>bs.map(x=>x.id===b.id?b:x));setModal(null);showToast("Assinatura salva ✓");}} onClose={()=>setModal(null)} themeP={themeP} themeA={themeA}/>}
       {modal?.type==="localizacao" &&<ModalLocalizacao data={modal.data} onSave={b=>{setBudgets(bs=>bs.map(x=>x.id===b.id?b:x));setModal(null);showToast("Localização salva ✓");}} onClose={()=>setModal(null)} themeP={themeP}/>}
+      {modal?.type==="share"      &&<ModalCompartilhar data={modal.data} profile={profile} user={user} onClose={()=>setModal(null)} themeP={themeP} themeA={themeA} onStatusUpdate={b=>{setBudgets(bs=>bs.map(x=>x.id===b.id?b:x));showToast(b.status==="aprovado"?"✅ Aprovado pelo cliente!":"❌ Recusado pelo cliente",b.status==="aprovado"?"ok":"warn");}}/>}
       {toast&&<Toast msg={toast.msg} type={toast.type} color={themeP}/>}
     </React.Fragment>
   );
@@ -2511,6 +2520,361 @@ function ModalDespesa({data,onSave,onDelete,onClose,themeP}){
   );
 }
 
+
+/* ═══ MODAL COMPARTILHAR ORÇAMENTO ══════════════════════════════════════ */
+function ModalCompartilhar({data,profile,user,onClose,themeP,themeA,onStatusUpdate}){
+  const [token,setToken]=useState(null);
+  const [loading,setLoading]=useState(false);
+  const [copied,setCopied]=useState(false);
+  const [existing,setExisting]=useState(null);
+  const [checking,setChecking]=useState(true);
+
+  // Check if already shared
+  useEffect(()=>{
+    supabase.from("public_budgets").select("*").eq("budget_id",data.id).maybeSingle()
+      .then(({data:row})=>{
+        if(row){setExisting(row);setToken(row.token);}
+        setChecking(false);
+      });
+  },[data.id]);
+
+  const gerar=async()=>{
+    setLoading(true);
+    const t=[...Array(20)].map(()=>"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"[Math.floor(Math.random()*62)]).join("");
+    const expires=new Date();expires.setDate(expires.getDate()+30);
+    const row={token:t,budget_id:data.id,user_id:user.id,budget_data:{...data,profile:{name:profile.name,phone:profile.phone,email:profile.email,profession:profile.profession,logo:profile.logo,city:profile.city,crea:profile.crea,instagram:profile.instagram,website:profile.website,primaryColor:profile.primaryColor||themeP,accentColor:profile.accentColor||themeA}},status:"pendente",expires_at:expires.toISOString()};
+    const{data:saved,error}=await supabase.from("public_budgets").insert([row]).select().single();
+    if(error){console.error(error);setLoading(false);return;}
+    setToken(saved.token);setExisting(saved);setLoading(false);
+  };
+
+  const revogar=async()=>{
+    if(!existing)return;
+    await supabase.from("public_budgets").delete().eq("id",existing.id);
+    setToken(null);setExisting(null);
+  };
+
+  const link=token?`${window.location.origin}/o/${token}`:"";
+  const copy=()=>{navigator.clipboard?.writeText(link);setCopied(true);setTimeout(()=>setCopied(false),2000);};
+  const sendWA=()=>{
+    const msg=`Olá *${data.clientName}*! 👋\n\nSegue o orçamento *${data.num}* — *${data.title}*\n💰 Valor: *${fmtBRL(data.total)}*\n\nVocê pode visualizar e *aprovar digitalmente* pelo link abaixo:\n👉 ${link}\n\nQualquer dúvida, estou à disposição!\n\n— ${profile.name||"OrcaPro"}`;
+    window.open(`https://wa.me/55${(data.phone||"").replace(/\D/g,"")}?text=${encodeURIComponent(msg)}`,"_blank");
+  };
+
+  return(
+    <Overlay onClose={onClose} wide>
+      <div style={S.mhead}>
+        <div><div style={S.mtitle}>🔗 Compartilhar Orçamento</div><div style={S.msub}>{data.num} · {data.clientName}</div></div>
+        <XBtn onClick={onClose}/>
+      </div>
+
+      {/* Resumo */}
+      <div style={{padding:"12px 16px",background:"#0F172A",borderRadius:12,border:"1px solid #1E293B",marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div><div style={{fontWeight:700,color:"#F1F5F9"}}>{data.title}</div><div style={{fontSize:12,color:"#64748B",marginTop:2}}>{data.num} · {data.category}</div></div>
+        <div style={{fontSize:22,fontWeight:900,color:themeP}}>{fmtBRL(data.total)}</div>
+      </div>
+
+      {/* Status do link */}
+      {data.assinatura&&<div style={{padding:"10px 14px",background:"rgba(34,211,160,.06)",border:"1px solid rgba(34,211,160,.2)",borderRadius:10,marginBottom:14,fontSize:12,color:"#22D3A0"}}>✅ Já assinado por <b>{data.assinadoPor||data.clientName}</b> em {data.assinadoEm}</div>}
+
+      {checking?(
+        <div style={{textAlign:"center",padding:"32px 0",color:"#64748B"}}>⏳ Verificando...</div>
+      ):!token?(
+        <div style={{textAlign:"center",padding:"24px 0"}}>
+          <div style={{fontSize:40,marginBottom:12}}>🔗</div>
+          <div style={{fontSize:14,fontWeight:600,color:"#94A3B8",marginBottom:6}}>Gere um link único para o cliente</div>
+          <div style={{fontSize:12,color:"#475569",marginBottom:20}}>O cliente poderá ver o orçamento, assinar e aprovar online — sem precisar de login.</div>
+          <button style={{...S.prim,background:`linear-gradient(135deg,${themeP},${themeA})`}} onClick={gerar} disabled={loading}>
+            {loading?"⏳ Gerando...":"🔗 Gerar Link de Aprovação"}
+          </button>
+        </div>
+      ):(
+        <div>
+          {/* Link box */}
+          <div style={{marginBottom:16}}>
+            <div style={{fontSize:11,color:"#64748B",fontWeight:700,textTransform:"uppercase",letterSpacing:.5,marginBottom:8}}>Link gerado — válido por 30 dias</div>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <div style={{flex:1,padding:"10px 14px",background:"#0F172A",borderRadius:10,border:`1px solid ${themeP}30`,fontSize:12,color:"#94A3B8",wordBreak:"break-all",fontFamily:"monospace"}}>
+                {link}
+              </div>
+              <button style={{...S.prim,padding:"10px 14px",background:copied?"#22D3A0":themeP,flexShrink:0}} onClick={copy}>
+                {copied?"✓ Copiado!":"📋 Copiar"}
+              </button>
+            </div>
+          </div>
+
+          {/* Status do cliente */}
+          {existing&&(
+            <div style={{padding:"12px 14px",background:existing.status==="aprovado"?"rgba(34,211,160,.06)":existing.status==="recusado"?"rgba(248,113,113,.06)":"rgba(245,158,11,.06)",border:`1px solid ${existing.status==="aprovado"?"rgba(34,211,160,.2)":existing.status==="recusado"?"rgba(248,113,113,.2)":"rgba(245,158,11,.2)"}`,borderRadius:12,marginBottom:14}}>
+              <div style={{fontSize:13,fontWeight:700,color:existing.status==="aprovado"?"#22D3A0":existing.status==="recusado"?"#F87171":"#F59E0B",marginBottom:4}}>
+                {existing.status==="aprovado"?"✅ Cliente APROVOU":existing.status==="recusado"?"❌ Cliente RECUSOU":"⏳ Aguardando resposta do cliente"}
+              </div>
+              {existing.viewed_at&&<div style={{fontSize:11,color:"#64748B"}}>Visualizado em: {new Date(existing.viewed_at).toLocaleString("pt-BR")}</div>}
+              {existing.responded_at&&<div style={{fontSize:11,color:"#64748B"}}>Respondido em: {new Date(existing.responded_at).toLocaleString("pt-BR")}</div>}
+              {existing.client_name&&<div style={{fontSize:11,color:"#64748B"}}>Assinado por: <b style={{color:"#94A3B8"}}>{existing.client_name}</b></div>}
+              {existing.client_signature&&<div style={{marginTop:8}}><div style={{fontSize:10,color:"#475569",marginBottom:4}}>Assinatura do cliente:</div><img src={existing.client_signature} alt="assinatura" style={{maxHeight:50,background:"#fff",borderRadius:6,padding:4,objectFit:"contain"}}/></div>}
+            </div>
+          )}
+
+          {/* Actions */}
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:14}}>
+            <button style={{...S.prim,background:"#25D366",color:"#fff"}} onClick={sendWA}>📱 Enviar pelo WhatsApp</button>
+            <button style={{...S.ghost,fontSize:12}} onClick={copy}>{copied?"✓ Copiado!":"📋 Copiar Link"}</button>
+            <button style={{...S.ghost,fontSize:12,borderColor:"rgba(248,113,113,.3)",color:"#F87171"}} onClick={revogar}>🗑️ Revogar Link</button>
+          </div>
+
+          <div style={{fontSize:11,color:"#475569",padding:"10px 14px",background:"#0F172A",borderRadius:9,border:"1px solid #1E293B"}}>
+            💡 O cliente abre o link, assina com o dedo e aprova. O status atualiza automaticamente aqui.
+          </div>
+        </div>
+      )}
+    </Overlay>
+  );
+}
+
+/* ═══ PÁGINA PÚBLICA DO ORÇAMENTO ════════════════════════════════════════ */
+function PublicBudgetPage({token}){
+  const [pb,setPb]=useState(null);
+  const [loading,setLoading]=useState(true);
+  const [step,setStep]=useState("view"); // view | sign | done
+  const [nome,setNome]=useState("");
+  const [agreed,setAgreed]=useState(false);
+  const [drawing,setDrawing]=useState(false);
+  const [hasSig,setHasSig]=useState(false);
+  const [submitting,setSubmitting]=useState(false);
+  const [decision,setDecision]=useState(null); // 'aprovado' | 'recusado'
+  const canvasRef=useRef();
+  const lastPos=useRef(null);
+
+  useEffect(()=>{
+    supabase.from("public_budgets").select("*").eq("token",token).maybeSingle()
+      .then(({data:row})=>{
+        if(row){
+          setPb(row);
+          setNome(row.budget_data?.clientName||"");
+          // mark as viewed
+          if(!row.viewed_at){
+            supabase.from("public_budgets").update({viewed_at:new Date().toISOString()}).eq("token",token).then(()=>{});
+          }
+        }
+        setLoading(false);
+      });
+  },[token]);
+
+  const getPos=(e,cv)=>{
+    const r=cv.getBoundingClientRect();
+    const t=e.touches?e.touches[0]:e;
+    return{x:(t.clientX-r.left)*(cv.width/r.width),y:(t.clientY-r.top)*(cv.height/r.height)};
+  };
+  const startDraw=e=>{e.preventDefault();setDrawing(true);lastPos.current=getPos(e,canvasRef.current);};
+  const draw=e=>{
+    e.preventDefault();
+    if(!drawing||!canvasRef.current)return;
+    const ctx=canvasRef.current.getContext("2d");
+    const pos=getPos(e,canvasRef.current);
+    ctx.beginPath();ctx.moveTo(lastPos.current.x,lastPos.current.y);ctx.lineTo(pos.x,pos.y);
+    ctx.strokeStyle="#1E293B";ctx.lineWidth=3;ctx.lineCap="round";ctx.lineJoin="round";ctx.stroke();
+    lastPos.current=pos;setHasSig(true);
+  };
+  const endDraw=e=>{e.preventDefault();setDrawing(false);};
+  const clearSig=()=>{
+    const ctx=canvasRef.current.getContext("2d");
+    ctx.clearRect(0,0,canvasRef.current.width,canvasRef.current.height);
+    setHasSig(false);
+  };
+
+  const recusar=async()=>{
+    setSubmitting(true);
+    await supabase.from("public_budgets").update({status:"recusado",responded_at:new Date().toISOString(),client_name:nome}).eq("token",token);
+    setDecision("recusado");setStep("done");setSubmitting(false);
+  };
+
+  const aprovar=async()=>{
+    if(!hasSig){alert("Por favor assine antes de aprovar");return;}
+    if(!agreed){alert("Marque a caixa de concordância");return;}
+    setSubmitting(true);
+    const sig=canvasRef.current.toDataURL("image/png");
+    await supabase.from("public_budgets").update({status:"aprovado",responded_at:new Date().toISOString(),client_name:nome,client_signature:sig}).eq("token",token);
+    setDecision("aprovado");setStep("done");setSubmitting(false);
+  };
+
+  if(loading)return(
+    <div style={{minHeight:"100vh",background:"#0A0E1A",display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div style={{color:"#64748B",fontSize:14}}>⏳ Carregando orçamento...</div>
+    </div>
+  );
+
+  if(!pb)return(
+    <div style={{minHeight:"100vh",background:"#0A0E1A",display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}>
+      <div style={{fontSize:48}}>🔍</div>
+      <div style={{color:"#F87171",fontSize:16,fontWeight:700}}>Orçamento não encontrado</div>
+      <div style={{color:"#64748B",fontSize:13}}>O link pode ter expirado ou sido revogado.</div>
+    </div>
+  );
+
+  const b=pb.budget_data;
+  const pf=b.profile||{};
+  const P=pf.primaryColor||"#818CF8";
+  const A=pf.accentColor||"#22D3A0";
+  const sub=calcSub(b.items||[]);
+  const alreadyDone=pb.status==="aprovado"||pb.status==="recusado";
+
+  if(step==="done"||alreadyDone){
+    const st=decision||pb.status;
+    return(
+      <div style={{minHeight:"100vh",background:"#0A0E1A",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+        <div style={{maxWidth:480,width:"100%",textAlign:"center"}}>
+          <div style={{fontSize:72,marginBottom:16}}>{st==="aprovado"?"✅":"❌"}</div>
+          <div style={{fontSize:24,fontWeight:900,color:st==="aprovado"?"#22D3A0":"#F87171",marginBottom:8}}>
+            {st==="aprovado"?"Orçamento Aprovado!":"Orçamento Recusado"}
+          </div>
+          <div style={{fontSize:14,color:"#64748B",marginBottom:24}}>
+            {st==="aprovado"
+              ?"Sua assinatura foi registrada. Em breve entraremos em contato para confirmar os detalhes."
+              :"Entendemos. Se mudar de ideia, entre em contato conosco."}
+          </div>
+          <div style={{padding:"16px",background:"#0F172A",borderRadius:12,border:"1px solid #1E293B",marginBottom:16}}>
+            <div style={{fontSize:13,color:"#94A3B8"}}>{b.num} — {b.title}</div>
+            <div style={{fontSize:22,fontWeight:900,color:P,marginTop:4}}>{fmtBRL(b.total)}</div>
+          </div>
+          {pf.phone&&<a href={`https://wa.me/55${(pf.phone||"").replace(/\D/g,"")}`} target="_blank" rel="noreferrer" style={{display:"inline-flex",alignItems:"center",gap:8,padding:"12px 24px",background:"#25D366",color:"#fff",borderRadius:10,textDecoration:"none",fontWeight:700,fontSize:14}}>
+            📱 Falar com {pf.name||"o prestador"}
+          </a>}
+        </div>
+      </div>
+    );
+  }
+
+  return(
+    <div style={{minHeight:"100vh",background:"#F1F5F9",fontFamily:"'DM Sans',Arial,sans-serif"}}>
+      {/* Header */}
+      <div style={{background:`linear-gradient(135deg,${P},${A})`,padding:"16px 20px",display:"flex",alignItems:"center",gap:12,position:"sticky",top:0,zIndex:10}}>
+        {pf.logo?<img src={pf.logo} alt="logo" style={{width:36,height:36,borderRadius:8,objectFit:"contain",background:"rgba(255,255,255,.2)",padding:2}}/>
+          :<div style={{width:36,height:36,borderRadius:8,background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>⚡</div>}
+        <div>
+          <div style={{fontSize:14,fontWeight:800,color:"#fff"}}>{pf.name||"OrcaPro"}</div>
+          {pf.profession&&<div style={{fontSize:11,color:"rgba(255,255,255,.8)"}}>{pf.profession}</div>}
+        </div>
+        <div style={{marginLeft:"auto",textAlign:"right"}}>
+          <div style={{fontSize:10,color:"rgba(255,255,255,.7)"}}>Orçamento</div>
+          <div style={{fontSize:13,fontWeight:700,color:"#fff"}}>{b.num}</div>
+        </div>
+      </div>
+
+      <div style={{maxWidth:600,margin:"0 auto",padding:"20px 16px 40px"}}>
+        {/* Client greeting */}
+        <div style={{background:"#fff",borderRadius:16,padding:"20px",marginBottom:16,boxShadow:"0 2px 12px rgba(0,0,0,.06)"}}>
+          <div style={{fontSize:18,fontWeight:800,color:"#1E293B",marginBottom:4}}>Olá, {b.clientName}! 👋</div>
+          <div style={{fontSize:13,color:"#64748B"}}>Segue o orçamento para sua avaliação. Você pode aprovar ou recusar diretamente aqui.</div>
+        </div>
+
+        {/* Budget card */}
+        <div style={{background:"#fff",borderRadius:16,padding:"20px",marginBottom:16,boxShadow:"0 2px 12px rgba(0,0,0,.06)"}}>
+          <div style={{fontSize:16,fontWeight:800,color:"#1E293B",marginBottom:4}}>{b.title}</div>
+          <div style={{fontSize:12,color:"#94A3B8",marginBottom:12}}>{b.category} · {b.date}</div>
+          {b.desc&&<div style={{fontSize:13,color:"#475569",marginBottom:14,padding:"10px 12px",background:"#F8FAFC",borderRadius:8}}>{b.desc}</div>}
+
+          {/* Items */}
+          <div style={{border:"1px solid #E2E8F0",borderRadius:12,overflow:"hidden",marginBottom:12}}>
+            {(b.items||[]).map((it,i)=>(
+              <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"10px 14px",borderBottom:i<(b.items||[]).length-1?"1px solid #F1F5F9":"none",background:i%2===0?"#fff":"#FAFAFA"}}>
+                <div>
+                  <div style={{fontSize:13,fontWeight:600,color:"#1E293B"}}>{it.desc}</div>
+                  <div style={{fontSize:11,color:"#94A3B8"}}>{it.qty} {it.unit} × {fmtBRL(it.price)}</div>
+                </div>
+                <div style={{fontWeight:700,color:"#1E293B"}}>{fmtBRL((it.qty||0)*(it.price||0))}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Totals */}
+          <div style={{display:"flex",flexDirection:"column",gap:4}}>
+            {b.discount>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#64748B"}}><span>Subtotal</span><span>{fmtBRL(sub)}</span></div>}
+            {b.discount>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:12,color:"#EF4444"}}><span>Desconto ({b.discount}%)</span><span>-{fmtBRL(sub*b.discount/100)}</span></div>}
+            <div style={{display:"flex",justifyContent:"space-between",fontWeight:900,fontSize:20,color:P,paddingTop:8,borderTop:"2px solid #F1F5F9",marginTop:4}}>
+              <span>TOTAL</span><span>{fmtBRL(b.total)}</span>
+            </div>
+          </div>
+          {b.notes&&<div style={{marginTop:10,padding:"8px 12px",background:"#FFFBEB",borderRadius:8,fontSize:12,color:"#92400E"}}>📝 {b.notes}</div>}
+          {b.validity&&<div style={{marginTop:8,fontSize:11,color:"#94A3B8"}}>Validade: {b.validity} dias a partir de {b.date}</div>}
+        </div>
+
+        {/* Provider info */}
+        {(pf.phone||pf.email||pf.city)&&(
+          <div style={{background:"#fff",borderRadius:16,padding:"16px 20px",marginBottom:16,boxShadow:"0 2px 12px rgba(0,0,0,.06)"}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#94A3B8",textTransform:"uppercase",letterSpacing:.5,marginBottom:10}}>Prestador</div>
+            <div style={{fontSize:14,fontWeight:700,color:"#1E293B",marginBottom:6}}>{pf.name}</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+              {pf.phone&&<a href={`tel:+55${(pf.phone||"").replace(/\D/g,"")}`} style={{fontSize:12,color:P,textDecoration:"none"}}>📱 {pf.phone}</a>}
+              {pf.email&&<a href={`mailto:${pf.email}`} style={{fontSize:12,color:P,textDecoration:"none"}}>✉️ {pf.email}</a>}
+              {pf.city&&<span style={{fontSize:12,color:"#64748B"}}>📍 {pf.city}</span>}
+            </div>
+          </div>
+        )}
+
+        {step==="view"&&(
+          <div style={{display:"flex",gap:10,marginTop:8}}>
+            <button style={{flex:1,padding:"14px",background:"#EF4444",color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer"}} onClick={recusar} disabled={submitting}>
+              ❌ Recusar
+            </button>
+            <button style={{flex:2,padding:"14px",background:`linear-gradient(135deg,${P},${A})`,color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer"}} onClick={()=>setStep("sign")}>
+              ✍️ Assinar e Aprovar
+            </button>
+          </div>
+        )}
+
+        {step==="sign"&&(
+          <div style={{background:"#fff",borderRadius:16,padding:"20px",boxShadow:"0 2px 12px rgba(0,0,0,.06)"}}>
+            <div style={{fontSize:16,fontWeight:800,color:"#1E293B",marginBottom:4}}>✍️ Assinar e Aprovar</div>
+            <div style={{fontSize:12,color:"#64748B",marginBottom:16}}>Assine abaixo para confirmar a aprovação do orçamento.</div>
+
+            {/* Nome */}
+            <div style={{marginBottom:14}}>
+              <div style={{fontSize:11,color:"#94A3B8",fontWeight:700,marginBottom:6,textTransform:"uppercase",letterSpacing:.5}}>Seu nome completo</div>
+              <input style={{width:"100%",padding:"10px 14px",border:"1px solid #E2E8F0",borderRadius:10,fontSize:14,color:"#1E293B",outline:"none",boxSizing:"border-box"}} value={nome} onChange={e=>setNome(e.target.value)} placeholder={b.clientName}/>
+            </div>
+
+            {/* Termo */}
+            <div style={{padding:"10px 14px",background:"#F8FAFC",borderRadius:10,border:"1px solid #E2E8F0",marginBottom:14,fontSize:12,color:"#475569",lineHeight:1.6}}>
+              Ao assinar, <b>{nome||b.clientName}</b> autoriza a execução dos serviços do orçamento <b>{b.num}</b> no valor de <b>{fmtBRL(b.total)}</b>. Data: <b>{new Date().toLocaleDateString("pt-BR")}</b>.
+            </div>
+
+            {/* Canvas */}
+            <div style={{marginBottom:14}}>
+              <div style={{fontSize:11,color:"#94A3B8",fontWeight:700,marginBottom:8,display:"flex",justifyContent:"space-between",alignItems:"center",textTransform:"uppercase",letterSpacing:.5}}>
+                <span>Assinatura</span>
+                {hasSig&&<button onClick={clearSig} style={{background:"none",border:"1px solid #EF4444",color:"#EF4444",borderRadius:6,padding:"2px 10px",cursor:"pointer",fontSize:11}}>🗑️ Limpar</button>}
+              </div>
+              <div style={{border:`2px dashed ${hasSig?P:"#CBD5E1"}`,borderRadius:12,background:"#FAFAFA",overflow:"hidden",transition:"border-color .2s"}}>
+                <canvas ref={canvasRef} width={540} height={150}
+                  style={{display:"block",width:"100%",height:150,cursor:"crosshair",touchAction:"none"}}
+                  onMouseDown={startDraw} onMouseMove={draw} onMouseUp={endDraw} onMouseLeave={endDraw}
+                  onTouchStart={startDraw} onTouchMove={draw} onTouchEnd={endDraw}/>
+              </div>
+              {!hasSig&&<div style={{textAlign:"center",fontSize:12,color:"#94A3B8",marginTop:6}}>Toque ou clique e arraste para assinar</div>}
+            </div>
+
+            {/* Checkbox */}
+            <div onClick={()=>setAgreed(a=>!a)} style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",background:agreed?"#F0FDF4":"#F8FAFC",border:`1px solid ${agreed?"#86EFAC":"#E2E8F0"}`,borderRadius:10,marginBottom:16,cursor:"pointer",userSelect:"none"}}>
+              <div style={{width:20,height:20,borderRadius:6,border:`2px solid ${agreed?"#22C55E":"#CBD5E1"}`,background:agreed?"#22C55E":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,transition:"all .2s"}}>
+                {agreed&&<span style={{color:"#fff",fontSize:13,fontWeight:900}}>✓</span>}
+              </div>
+              <span style={{fontSize:13,color:agreed?"#166534":"#64748B"}}>Li e aceito os termos do orçamento {b.num}</span>
+            </div>
+
+            <div style={{display:"flex",gap:10}}>
+              <button style={{padding:"12px 20px",background:"none",border:"1px solid #E2E8F0",borderRadius:10,fontSize:14,cursor:"pointer",color:"#64748B"}} onClick={()=>setStep("view")}>← Voltar</button>
+              <button style={{flex:1,padding:"14px",background:`linear-gradient(135deg,${P},${A})`,color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer",opacity:(hasSig&&agreed)?1:.4}} onClick={aprovar} disabled={submitting||!hasSig||!agreed}>
+                {submitting?"⏳ Enviando...":"✅ Confirmar Aprovação"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ═══ PAGES (outras) ════════════════════════════════════════════════════ */
 function PageDash({stats,budgets,user,profile,clients,themeP,themeA,setModal,setStatus,sendWA,setPage}){
   const byMonth=getByMonth(budgets);const maxR=Math.max(...byMonth.map(m=>m.receita),1);
@@ -2936,6 +3300,7 @@ function ModalDetail({data,onClose,setStatus,sendWA,onEdit,onDelete,themeP,setMo
         <button style={{...S.prim,flex:1,background:"#25D366",color:"#fff"}} onClick={()=>sendWA(data)}>📱 WhatsApp</button>
         {setModal&&<button style={{...S.ghost,padding:"8px 12px"}} onClick={()=>setModal({type:"fotos",data})}>📷 Fotos</button>}
         {setModal&&<button style={{...S.ghost,padding:"8px 12px"}} onClick={()=>setModal({type:"preview",data})}>👁️ Preview</button>}
+        {setModal&&<button style={{...S.ghost,padding:"8px 12px",borderColor:"rgba(34,211,160,.3)",color:"#22D3A0"}} onClick={()=>setModal({type:"share",data})}>🔗 Compartilhar</button>}
         {setModal&&<button style={{...S.ghost,padding:"8px 12px"}} onClick={()=>setModal({type:"localizacao",data})}>📍 Local</button>}
         {setModal&&<button style={{...S.ghost,padding:"8px 12px",borderColor:"rgba(129,140,248,.3)",color:"#818CF8"}} onClick={()=>setModal({type:"assinatura",data})}>✍️ Assinar</button>}
       </div>

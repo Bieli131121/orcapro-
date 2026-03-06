@@ -888,10 +888,21 @@ function ModalUserForm({data,onSave,onClose}){
 }
 
 /* ═══ APP SHELL ══════════════════════════════════════════════════════════ */
-function AppShell({user,onLogout}){
+function AppShell({user:initialUser,onLogout}){
+  const [user,setUser]=useState(initialUser);
   const [data,setDataState]=useState(null);
   const [loading,setLoading]=useState(true);
   const saveTimeout=useRef(null);
+
+  // Busca usuario fresco do banco a cada 30s — atualiza plano em tempo real
+  useEffect(()=>{
+    const refresh=()=>{
+      supabase.from("users").select("*").eq("id",initialUser.id).maybeSingle()
+        .then(({data:u})=>{if(u)setUser(u);});
+    };
+    const interval=setInterval(refresh,30000);
+    return()=>clearInterval(interval);
+  },[initialUser.id]);
 
   // Carrega dados do Supabase ao montar
   useEffect(()=>{

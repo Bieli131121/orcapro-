@@ -327,11 +327,13 @@ function useStorage(key,fallback){
 
 /* ═══ ROOT ═══════════════════════════════════════════════════════════════ */
 export default function Root(){
-  // Detect public budget link: /o/TOKEN
+  // Detect public budget link: hash #/o/TOKEN or pathname /o/TOKEN
   const token=useMemo(()=>{
-    const p=window.location.pathname;
-    const m=p.match(/^\/o\/([a-zA-Z0-9_-]+)$/);
-    return m?m[1]:null;
+    const hash=window.location.hash; // #/o/TOKEN
+    const path=window.location.pathname; // /o/TOKEN
+    const mh=hash.match(/^#\/o\/([a-zA-Z0-9_-]+)$/);
+    const mp=path.match(/^\/o\/([a-zA-Z0-9_-]+)$/);
+    return mh?mh[1]:mp?mp[1]:null;
   },[]);
   if(token)return<React.Fragment><style>{GCSS}</style><PublicBudgetPage token={token}/></React.Fragment>;
 
@@ -2554,7 +2556,7 @@ function ModalCompartilhar({data,profile,user,onClose,themeP,themeA,onStatusUpda
     setToken(null);setExisting(null);
   };
 
-  const link=token?`${window.location.origin}/o/${token}`:"";
+  const link=token?`${window.location.origin}/#/o/${token}`:"";
   const copy=()=>{navigator.clipboard?.writeText(link);setCopied(true);setTimeout(()=>setCopied(false),2000);};
   const sendWA=()=>{
     const msg=`Olá *${data.clientName}*! 👋\n\nSegue o orçamento *${data.num}* — *${data.title}*\n💰 Valor: *${fmtBRL(data.total)}*\n\nVocê pode visualizar e *aprovar digitalmente* pelo link abaixo:\n👉 ${link}\n\nQualquer dúvida, estou à disposição!\n\n— ${profile.name||"OrcaPro"}`;

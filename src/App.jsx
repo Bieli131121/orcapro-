@@ -972,6 +972,35 @@ function App({user,data,patch,themeP,themeA,onLogout}){
     }));
   },[setBudgets]);
 
+  // ── Realtime: notifica quando cliente aprova/recusa via link público ──
+  useEffect(()=>{
+    const channel=supabase.channel("public_budgets_notify")
+      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"public_budgets"},payload=>{
+        const row=payload.new;
+        if(!row||!row.budget_id)return;
+        // só notifica orçamentos deste usuário
+        const b=budgetsRef.current.find(x=>x.id===row.budget_id);
+        if(!b)return;
+        if(row.status==="aprovado"){
+          // toca som de notificação
+          try{const ctx=new(window.AudioContext||window.webkitAudioContext)();const o=ctx.createOscillator();const g=ctx.createGain();o.connect(g);g.connect(ctx.destination);o.frequency.setValueAtTime(880,ctx.currentTime);o.frequency.setValueAtTime(1100,ctx.currentTime+0.15);g.gain.setValueAtTime(0.3,ctx.currentTime);g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.5);o.start(ctx.currentTime);o.stop(ctx.currentTime+0.5);}catch{}
+          // atualiza status do orçamento
+          setBudgets(bs=>bs.map(x=>x.id===b.id?{...x,status:"aprovado",assinatura:row.client_signature||x.assinatura,assinadoPor:row.client_name||x.clientName,assinadoEm:new Date(row.responded_at).toLocaleString("pt-BR")}:x));
+          addNotif(`✅ ${row.client_name||b.clientName} APROVOU o orçamento ${b.num} — ${fmtBRL(b.total)}`,"✅");
+          showToast(`✅ ${row.client_name||b.clientName} aprovou ${b.num}!`,"ok");
+          setNotifBell(true);setTimeout(()=>setNotifBell(false),4000);
+        } else if(row.status==="recusado"){
+          try{const ctx=new(window.AudioContext||window.webkitAudioContext)();const o=ctx.createOscillator();const g=ctx.createGain();o.connect(g);g.connect(ctx.destination);o.frequency.setValueAtTime(300,ctx.currentTime);g.gain.setValueAtTime(0.2,ctx.currentTime);g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.4);o.start(ctx.currentTime);o.stop(ctx.currentTime+0.4);}catch{}
+          setBudgets(bs=>bs.map(x=>x.id===b.id?{...x,status:"recusado"}:x));
+          addNotif(`❌ ${row.client_name||b.clientName} RECUSOU o orçamento ${b.num}`,"❌");
+          showToast(`❌ ${row.client_name||b.clientName} recusou ${b.num}`,"warn");
+          setNotifBell(true);setTimeout(()=>setNotifBell(false),4000);
+        }
+      })
+      .subscribe();
+    return()=>{supabase.removeChannel(channel);};
+  },[]);// eslint-disable-line
+
   const saveBudget=f=>{
     const total=calcTot(f.items,f.discount,f.tax);
     if(f.id){setBudgets(bs=>bs.map(b=>b.id===f.id?{...f,total}:b));addAct(`Editou ${f.num}`);}

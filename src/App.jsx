@@ -40,7 +40,7 @@ const CATS   = ["Elétrica","Hidráulica","Marcenaria","Pintura","Mecânica","In
 const UNITS  = ["un","m","m²","m³","kg","l","serv","hr","dia","kit","cx","pc","vb"];
 const PROFS  = ["Eletricista","Encanador","Pedreiro","Pintor","Mecânico","Marceneiro","Técnico em TI","Jardineiro","Climatizador","Outro"];
 const PLANS = {
-  basico:   {label:"Básico",   color:"#64748B", price:29,  max:30,  ico:"⚡", features:["dashboard","lista","clientes","templates","atividade","notificacoes","chat","config"],           locked:["relatorio","estoque","financeiro","share","assinatura","localizacao","fotos","docfiscal"]},
+  basico:   {label:"Básico",   color:"#64748B", price:29,  max:30,  ico:"⚡", features:["dashboard","lista","clientes","templates","atividade","notificacoes","chat","config"],           locked:["relatorio","estoque","financeiro","share","assinatura","localizacao","fotos","docfiscal","funil"]},
   pro:      {label:"Pro",      color:"#818CF8", price:49,  max:200, ico:"🚀", features:["dashboard","lista","clientes","relatorio","templates","atividade","notificacoes","chat","estoque","financeiro","config","share","assinatura","localizacao","fotos","docfiscal"], locked:[]},
   vitalicio:{label:"Vitalício",color:"#F59E0B", price:197, max:9999,ico:"👑", features:["dashboard","lista","clientes","relatorio","templates","atividade","notificacoes","chat","estoque","financeiro","config","share","assinatura","localizacao","fotos","docfiscal"], locked:[]},
 };
@@ -313,7 +313,7 @@ const BLANK_PROFILE = {
 
 const seedData = u0 => ({
   budgets:[],clients:[],templates:[],
-  profile:{...BLANK_PROFILE},activity:[],fotos:{},notificacoes:[],estoque:[],despesas:[],
+  profile:{...BLANK_PROFILE},activity:[],fotos:{},notificacoes:[],estoque:[],despesas:[],funil:[],
 });
 
 /* ═══ STORAGE ═══════════════════════════════════════════════════════════ */
@@ -920,6 +920,7 @@ function AppShell({user:initialUser,onLogout}){
             estoque:row.data.estoque||[],
             chatMsgs:row.data.chatMsgs||[],
             orcCounter:row.data.orcCounter||1,
+            funil:row.data.funil||[],
           });
         } else {
           const seed=seedData(user.id);
@@ -961,7 +962,7 @@ function AppShell({user:initialUser,onLogout}){
 
 /* ═══ APP ════════════════════════════════════════════════════════════════ */
 function App({user,data,patch,themeP,themeA,onLogout}){
-  const {budgets=[],clients=[],templates=[],profile={},activity=[],fotos={},notificacoes=[],estoque=[],despesas=[],orcCounter=1,chatMsgs=[]}=data;
+  const {budgets=[],clients=[],templates=[],profile={},activity=[],fotos={},notificacoes=[],estoque=[],despesas=[],funil=[],orcCounter=1,chatMsgs=[]}=data;
   const setBudgets=patch("budgets");const setClients=patch("clients");
   const setTemplates=patch("templates");const setProfile=patch("profile");
   const setActivity=patch("activity");
@@ -969,6 +970,7 @@ function App({user,data,patch,themeP,themeA,onLogout}){
   const setNotificacoes=patch("notificacoes");
   const setEstoque=patch("estoque");
   const setDespesas=patch("despesas");
+  const setFunil=patch("funil");
   const setOrcCounter=patch("orcCounter");
   const setChatMsgs=patch("chatMsgs");
   const [page,setPage]=useState("dashboard");
@@ -1090,6 +1092,7 @@ function App({user,data,patch,themeP,themeA,onLogout}){
     {id:"chat",ico:"💬",lbl:"Mensagens",badge:unreadChat},
     {id:"estoque",ico:"📦",lbl:"Estoque",lock:isLocked("estoque")},
     {id:"financeiro",ico:"💰",lbl:"Financeiro",lock:isLocked("financeiro")},
+    {id:"funil",ico:"🎯",lbl:"Funil de Vendas",lock:isLocked("funil")},
     {id:"config",ico:"⚙️",lbl:"Meu Perfil"},
   ];
   const MOBILE_NAVS=[{id:"dashboard",ico:"📊",lbl:"Início"},{id:"lista",ico:"📋",lbl:"Orçamentos"},{id:"clientes",ico:"👥",lbl:"Clientes"},{id:"config",ico:"⚙️",lbl:"Perfil"},{id:"mais",ico:"☰",lbl:"Mais"}];
@@ -1107,6 +1110,7 @@ function App({user,data,patch,themeP,themeA,onLogout}){
       {page==="chat"          &&<PageChat chatMsgs={chatMsgs} setChatMsgs={setChatMsgs} user={user} themeP={themeP} themeA={themeA}/>}
       {page==="estoque"       &&(isLocked("estoque")?<PageLocked feature="estoque" plan={plan} planInfo={planInfo} themeP={themeP}/>:<PageEstoque estoque={estoque} setEstoque={setEstoque} themeP={themeP} themeA={themeA} showToast={showToast}/>)}
       {page==="financeiro"    &&(isLocked("financeiro")?<PageLocked feature="financeiro" plan={plan} planInfo={planInfo} themeP={themeP}/>:<PageFinanceiro budgets={budgets} despesas={despesas} setDespesas={setDespesas} profile={profile} themeP={themeP} themeA={themeA} showToast={showToast}/>)}
+      {page==="funil"         &&(isLocked("funil")?<PageLocked feature="funil" plan={plan} planInfo={planInfo} themeP={themeP}/>:<PageFunil budgets={budgets} funil={funil} setFunil={setFunil} setBudgets={setBudgets} clients={clients} profile={profile} themeP={themeP} themeA={themeA} showToast={showToast} setModal={setModal} sendWA={sendWA}/>)}
     </main>
   );
 
@@ -2956,6 +2960,7 @@ function PublicBudgetPage({token}){
 
 /* ═══ PLANOS & BLOQUEIO ═══════════════════════════════════════════════ */
 const FEATURE_LABELS = {
+  funil:"Funil de Vendas",
   relatorio:"Relatórios Avançados",estoque:"Gestão de Estoque",financeiro:"Módulo Financeiro / DRE",
   share:"Compartilhar Orçamento",assinatura:"Assinatura Digital",localizacao:"Localização do Serviço",
   fotos:"Galeria de Fotos",docfiscal:"Documentos Fiscais",
@@ -3023,6 +3028,211 @@ function ModalUpgrade({feature,plan,onClose,themeP}){
         <div style={{marginTop:12,fontSize:11,color:"#475569"}}>Plano atual: <b style={{color:PLANS[plan]?.color||"#64748B"}}>{PLANS[plan]?.label||plan}</b></div>
       </div>
       <button style={{...S.ghost,width:"100%",marginTop:8}} onClick={onClose}>Fechar</button>
+    </Overlay>
+  );
+}
+
+
+/* ═══ FUNIL DE VENDAS ═══════════════════════════════════════════════════ */
+const FUNIL_COLS=[
+  {id:"lead",     label:"Novo Lead",        color:"#60A5FA", ico:"📥", tip:"Cliente entrou em contato"},
+  {id:"enviado",  label:"Orçamento Enviado", color:"#F59E0B", ico:"📤", tip:"Aguardando retorno"},
+  {id:"negociando",label:"Em Negociação",   color:"#818CF8", ico:"🤝", tip:"Cliente está negociando"},
+  {id:"fechado",  label:"Fechado",           color:"#22D3A0", ico:"✅", tip:"Orçamento aprovado"},
+  {id:"perdido",  label:"Perdido",           color:"#F87171", ico:"❌", tip:"Não fechou"},
+];
+
+function PageFunil({budgets,funil,setFunil,setBudgets,clients,profile,themeP,themeA,showToast,setModal,sendWA}){
+  const [drag,setDrag]=useState(null); // {id, fromCol}
+  const [over,setOver]=useState(null);
+  const [modalCard,setModalCard]=useState(null);
+
+  // Enriquecer cards do funil com dados dos orçamentos
+  const cards=useMemo(()=>{
+    return (funil||[]).map(card=>{
+      const b=budgets.find(x=>x.id===card.budgetId)||{};
+      const diasNaEtapa=card.movedAt?Math.floor((Date.now()-new Date(card.movedAt).getTime())/86400000):0;
+      return{...card,...b,diasNaEtapa,totalVal:b.total||card.total||0};
+    });
+  },[funil,budgets]);
+
+  // Auto-add approved/sent budgets that aren't in funil yet
+  useEffect(()=>{
+    const ids=new Set((funil||[]).map(c=>c.budgetId));
+    const novos=budgets.filter(b=>!ids.has(b.id)&&(b.status==="pendente"||b.status==="enviado"||b.status==="aprovado"));
+    if(novos.length===0)return;
+    setFunil(f=>[...(f||[]),...novos.map(b=>({
+      id:uid(),budgetId:b.id,col:b.status==="aprovado"?"fechado":b.status==="enviado"?"enviado":"lead",
+      movedAt:new Date().toISOString(),total:b.total,
+    }))]);
+  },[budgets]); // eslint-disable-line
+
+  const byCol=col=>cards.filter(c=>c.col===col);
+  const totalCol=col=>byCol(col).reduce((s,c)=>s+(c.totalVal||0),0);
+
+  const moveCard=(cardId,toCol)=>{
+    setFunil(f=>f.map(c=>c.id===cardId?{...c,col:toCol,movedAt:new Date().toISOString()}:c));
+    // sync budget status
+    const card=(funil||[]).find(c=>c.id===cardId);
+    if(card){
+      const statusMap={fechado:"aprovado",perdido:"recusado",enviado:"enviado",lead:"pendente",negociando:"pendente"};
+      if(statusMap[toCol])setBudgets(bs=>bs.map(b=>b.id===card.budgetId?{...b,status:statusMap[toCol]}:b));
+    }
+    showToast("Card movido ✓");
+  };
+
+  const addCard=()=>{
+    const novo={id:uid(),budgetId:null,col:"lead",movedAt:new Date().toISOString(),
+      clientName:"Novo Lead",title:"",phone:"",total:0,num:"",custom:true};
+    setFunil(f=>[novo,...(f||[])]);
+    setModalCard(novo);
+  };
+
+  const delCard=id=>{setFunil(f=>f.filter(c=>c.id!==id));setModalCard(null);showToast("Removido","warn");};
+
+  const followUpWA=(card)=>{
+    const msg=`Olá *${card.clientName}*! 👋\n\nPassando para saber se teve a oportunidade de analisar o orçamento${card.num?` *${card.num}*`:""}${card.totalVal?` no valor de *${fmtBRL(card.totalVal)}*`:""}.\n\nFico à disposição para qualquer dúvida!\n\n— ${profile.name||""}`;
+    window.open(`https://wa.me/55${(card.phone||"").replace(/\D/g,"")}?text=${encodeURIComponent(msg)}`,"_blank");
+    showToast("WhatsApp aberto 📱");
+  };
+
+  // Drag handlers
+  const onDragStart=(e,card)=>{e.dataTransfer.effectAllowed="move";setDrag(card);};
+  const onDragOver=(e,col)=>{e.preventDefault();setOver(col);};
+  const onDrop=(e,col)=>{e.preventDefault();if(drag&&drag.col!==col)moveCard(drag.id,col);setDrag(null);setOver(null);};
+  const onDragEnd=()=>{setDrag(null);setOver(null);};
+
+  const totalFunil=cards.filter(c=>c.col!=="perdido").reduce((s,c)=>s+(c.totalVal||0),0);
+  const txFechamento=cards.length>0?Math.round(cards.filter(c=>c.col==="fechado").length/cards.filter(c=>c.col!=="perdido"||true).length*100):0;
+
+  return(
+    <div style={S.page}>
+      <PHead title="🎯 Funil de Vendas" sub="Acompanhe cada lead até o fechamento">
+        <button style={{...S.prim,background:`linear-gradient(135deg,${themeP},${themeA})`}} onClick={addCard}>+ Novo Lead</button>
+      </PHead>
+
+      {/* KPIs */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:20}}>
+        {[
+          {ico:"💰",lbl:"Pipeline Total",val:fmtBRL(totalFunil),color:themeP},
+          {ico:"✅",lbl:"Fechados",val:fmtBRL(totalCol("fechado")),color:"#22D3A0"},
+          {ico:"🎯",lbl:"Taxa Fechamento",val:`${txFechamento}%`,color:"#818CF8"},
+          {ico:"⏳",lbl:"Em Negociação",val:String(byCol("negociando").length),color:"#F59E0B"},
+        ].map(k=>(
+          <div key={k.lbl} style={{...S.card,padding:16,background:`${k.color}08`,border:`1px solid ${k.color}20`}}>
+            <div style={{fontSize:18,marginBottom:4}}>{k.ico}</div>
+            <div style={{fontSize:10,color:"#64748B",fontWeight:700,textTransform:"uppercase",letterSpacing:.5,marginBottom:3}}>{k.lbl}</div>
+            <div style={{fontSize:18,fontWeight:900,color:k.color}}>{k.val}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Kanban board */}
+      <div style={{display:"flex",gap:12,overflowX:"auto",paddingBottom:16,alignItems:"flex-start"}}>
+        {FUNIL_COLS.map(col=>(
+          <div key={col.id}
+            onDragOver={e=>onDragOver(e,col.id)}
+            onDrop={e=>onDrop(e,col.id)}
+            style={{minWidth:220,maxWidth:260,flex:"0 0 230px",background:over===col.id?`${col.color}12`:"#0F172A",borderRadius:16,border:`2px solid ${over===col.id?col.color:"#1E293B"}`,padding:12,transition:"all .2s"}}>
+            {/* Col header */}
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,paddingBottom:10,borderBottom:`1px solid #1E293B`}}>
+              <span style={{fontSize:16}}>{col.ico}</span>
+              <div style={{flex:1}}>
+                <div style={{fontSize:12,fontWeight:800,color:col.color}}>{col.label}</div>
+                <div style={{fontSize:10,color:"#475569"}}>{byCol(col.id).length} card(s) · {fmtBRL(totalCol(col.id))}</div>
+              </div>
+              <div style={{width:8,height:8,borderRadius:"50%",background:col.color,flexShrink:0}}/>
+            </div>
+
+            {/* Cards */}
+            <div style={{display:"flex",flexDirection:"column",gap:8,minHeight:80}}>
+              {byCol(col.id).length===0&&(
+                <div style={{textAlign:"center",padding:"20px 0",color:"#334155",fontSize:12}}>Arraste aqui</div>
+              )}
+              {byCol(col.id).map(card=>(
+                <div key={card.id}
+                  draggable
+                  onDragStart={e=>onDragStart(e,card)}
+                  onDragEnd={onDragEnd}
+                  style={{background:"#1E293B",borderRadius:12,padding:12,cursor:"grab",border:`1px solid ${card.diasNaEtapa>=3&&col.id!=="fechado"&&col.id!=="perdido"?"rgba(248,113,113,.4)":"#334155"}`,position:"relative",userSelect:"none"}}>
+                  {/* Alert badge - sem resposta há dias */}
+                  {card.diasNaEtapa>=3&&col.id!=="fechado"&&col.id!=="perdido"&&(
+                    <div style={{position:"absolute",top:-6,right:8,background:"#F87171",color:"#fff",fontSize:9,fontWeight:800,borderRadius:10,padding:"2px 6px"}}>
+                      {card.diasNaEtapa}d sem resposta
+                    </div>
+                  )}
+                  <div style={{fontSize:12,fontWeight:700,color:"#F1F5F9",marginBottom:3,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{card.clientName||"—"}</div>
+                  {card.title&&<div style={{fontSize:10,color:"#64748B",marginBottom:4,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{card.title}</div>}
+                  {card.num&&<div style={{fontSize:9,color:"#475569",fontFamily:"monospace",marginBottom:4}}>{card.num}</div>}
+                  {card.totalVal>0&&<div style={{fontSize:13,fontWeight:800,color:col.color,marginBottom:8}}>{fmtBRL(card.totalVal)}</div>}
+                  <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                    {card.phone&&<button onClick={()=>followUpWA(card)} style={{background:"#25D366",border:"none",color:"#fff",borderRadius:6,padding:"3px 7px",fontSize:10,cursor:"pointer",fontWeight:600}}>📱 Follow-up</button>}
+                    <button onClick={()=>setModalCard(card)} style={{background:"#1E293B",border:"1px solid #334155",color:"#94A3B8",borderRadius:6,padding:"3px 7px",fontSize:10,cursor:"pointer"}}>✏️</button>
+                    {card.budgetId&&<button onClick={()=>{const b=budgets.find(x=>x.id===card.budgetId);if(b)setModal({type:"detail",data:b});}} style={{background:"#1E293B",border:"1px solid #334155",color:"#94A3B8",borderRadius:6,padding:"3px 7px",fontSize:10,cursor:"pointer"}}>👁️</button>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Alerta leads parados */}
+      {cards.filter(c=>c.diasNaEtapa>=3&&c.col!=="fechado"&&c.col!=="perdido").length>0&&(
+        <div style={{marginTop:16,padding:"12px 16px",background:"rgba(248,113,113,.06)",border:"1px solid rgba(248,113,113,.2)",borderRadius:12}}>
+          <div style={{fontSize:13,fontWeight:700,color:"#F87171",marginBottom:8}}>⚠️ Leads sem resposta há 3+ dias</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+            {cards.filter(c=>c.diasNaEtapa>=3&&c.col!=="fechado"&&c.col!=="perdido").map(c=>(
+              <div key={c.id} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 10px",background:"#0F172A",borderRadius:8,border:"1px solid rgba(248,113,113,.2)"}}>
+                <span style={{fontSize:11,color:"#F1F5F9",fontWeight:600}}>{c.clientName}</span>
+                <span style={{fontSize:10,color:"#F87171"}}>{c.diasNaEtapa}d</span>
+                {c.phone&&<button onClick={()=>followUpWA(c)} style={{background:"#25D366",border:"none",color:"#fff",borderRadius:5,padding:"2px 6px",fontSize:10,cursor:"pointer"}}>📱</button>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Modal card */}
+      {modalCard&&(
+        <ModalFunilCard card={modalCard} funil={funil} setFunil={setFunil} onClose={()=>setModalCard(null)} onDelete={delCard} themeP={themeP}/>
+      )}
+    </div>
+  );
+}
+
+function ModalFunilCard({card,funil,setFunil,onClose,onDelete,themeP}){
+  const [f,sf]=useState({clientName:card.clientName||"",phone:card.phone||"",title:card.title||"",total:card.total||card.totalVal||0,col:card.col||"lead",obs:card.obs||""});
+  const set=(k,v)=>sf(p=>({...p,[k]:v}));
+  const save=()=>{
+    setFunil(fn=>fn.map(c=>c.id===card.id?{...c,...f}:c));
+    onClose();
+  };
+  return(
+    <Overlay onClose={onClose}>
+      <div style={S.mhead}>
+        <div><div style={S.mtitle}>{card.custom||!card.num?"Editar Lead":"Detalhes do Card"}</div><div style={S.msub}>{card.num||"Lead manual"}</div></div>
+        <XBtn onClick={onClose}/>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        <FL label="Cliente"><input style={S.inp} value={f.clientName} onChange={e=>set("clientName",e.target.value)}/></FL>
+        <FL label="WhatsApp"><input style={S.inp} value={f.phone} onChange={e=>set("phone",e.target.value)} placeholder="11999990000"/></FL>
+        <FL label="Serviço"><input style={S.inp} value={f.title} onChange={e=>set("title",e.target.value)}/></FL>
+        <FL label="Valor (R$)"><input style={S.inp} type="number" value={f.total} onChange={e=>set("total",Number(e.target.value))}/></FL>
+        <FL label="Etapa">
+          <select style={S.sel} value={f.col} onChange={e=>set("col",e.target.value)}>
+            {FUNIL_COLS.map(c=><option key={c.id} value={c.id}>{c.ico} {c.label}</option>)}
+          </select>
+        </FL>
+        <FL label="Observações"><textarea style={{...S.inp,minHeight:60,resize:"vertical"}} value={f.obs} onChange={e=>set("obs",e.target.value)} placeholder="Notas sobre esse lead..."/></FL>
+      </div>
+      <div style={{display:"flex",gap:8,marginTop:16,justifyContent:"space-between"}}>
+        <button style={{...S.ghost,borderColor:"rgba(248,113,113,.3)",color:"#F87171",fontSize:12}} onClick={()=>onDelete(card.id)}>🗑️ Remover</button>
+        <div style={{display:"flex",gap:8}}>
+          <button style={S.ghost} onClick={onClose}>Cancelar</button>
+          <button style={{...S.prim,background:`linear-gradient(135deg,${themeP},#6366F1)`}} onClick={save}>💾 Salvar</button>
+        </div>
+      </div>
     </Overlay>
   );
 }

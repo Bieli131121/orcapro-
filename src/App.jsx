@@ -353,18 +353,27 @@ export default function Root(){
   const[users,setUsers]=useState([]);
   const[session,setSession]=useState(()=>{try{return JSON.parse(localStorage.getItem("orc6:session"));}catch{return null;}});
   const[loading,setLoading]=useState(true);
+  const[currentUser,setCurrentUser]=useState(null);
   useEffect(()=>{
+    // Carrega lista de usuarios para o LoginScreen
     supabase.from("users").select("*").order("created_at",{ascending:false})
       .then(({data})=>{setUsers(data||[]);setLoading(false);});
   },[]);
+  // Sempre que session muda, busca o usuario FRESCO do banco (com plano atualizado)
+  useEffect(()=>{
+    if(!session?.userId||session.userId===ADMIN.id){setCurrentUser(null);return;}
+    supabase.from("users").select("*").eq("id",session.userId).maybeSingle()
+      .then(({data})=>{setCurrentUser(data||null);});
+  },[session?.userId]);
   if(loading)return<Splash/>;
   const isAdmin=session?.userId===ADMIN.id;
-  const currentUser=isAdmin?ADMIN:(users||[]).find(u=>u.id===session?.userId);
+  const resolvedUser=isAdmin?ADMIN:currentUser;
   const login=u=>{const s={userId:u.id,ts:Date.now()};localStorage.setItem("orc6:session",JSON.stringify(s));setSession(s);};
-  const logout=()=>{localStorage.removeItem("orc6:session");setSession(null);};
-  if(!currentUser)return<React.Fragment><style>{GCSS}</style><LoginScreen users={users||[]} onLogin={login}/></React.Fragment>;
+  const logout=()=>{localStorage.removeItem("orc6:session");setSession(null);setCurrentUser(null);};
+  if(!resolvedUser&&!isAdmin&&session?.userId)return<Splash/>;
+  if(!resolvedUser)return<React.Fragment><style>{GCSS}</style><LoginScreen users={users||[]} onLogin={login}/></React.Fragment>;
   if(isAdmin)return<React.Fragment><style>{GCSS}</style><AdminPanel users={users||[]} setUsers={setUsers} onLogout={logout}/></React.Fragment>;
-  return<React.Fragment><style>{GCSS}</style><AppShell user={currentUser} onLogout={logout}/></React.Fragment>;
+  return<React.Fragment><style>{GCSS}</style><AppShell user={resolvedUser} onLogout={logout}/></React.Fragment>;
 }
 
 /* ═══ LOGIN ══════════════════════════════════════════════════════════════ */

@@ -335,7 +335,16 @@ export default function Root(){
     const mp=path.match(/^\/o\/([a-zA-Z0-9_-]+)$/);
     return mh?mh[1]:mp?mp[1]:null;
   },[]);
-  if(token)return<React.Fragment><style>{GCSS}</style><PublicBudgetPage token={token}/></React.Fragment>;
+  if(token){
+    // Force scroll unlock — index.css sets overflow:hidden on html/body/#root
+    document.documentElement.style.cssText="height:auto;overflow-y:auto;overflow-x:hidden";
+    document.body.style.cssText="height:auto;overflow-y:auto;overflow-x:hidden";
+    const r=document.getElementById("root");if(r)r.style.cssText="height:auto;overflow:visible";
+    return<React.Fragment>
+      <style>{`html,body,#root{height:auto!important;overflow-y:auto!important;overflow-x:hidden!important;-webkit-overflow-scrolling:touch!important;}`}</style>
+      <PublicBudgetPage token={token}/>
+    </React.Fragment>;
+  }
 
   const[users,setUsers]=useState([]);
   const[session,setSession]=useState(()=>{try{return JSON.parse(localStorage.getItem("orc6:session"));}catch{return null;}});
@@ -2748,9 +2757,9 @@ function PublicBudgetPage({token}){
   }
 
   return(
-    <div style={{minHeight:"100vh",background:"#F1F5F9",fontFamily:"'DM Sans',Arial,sans-serif"}}>
+    <div style={{background:"#F1F5F9",fontFamily:"'DM Sans',Arial,sans-serif"}}>
       {/* Header */}
-      <div style={{background:`linear-gradient(135deg,${P},${A})`,padding:"16px 20px",display:"flex",alignItems:"center",gap:12,position:"sticky",top:0,zIndex:10}}>
+      <div style={{background:`linear-gradient(135deg,${P},${A})`,padding:"16px 20px",display:"flex",alignItems:"center",gap:12,position:"relative"}}>
         {pf.logo?<img src={pf.logo} alt="logo" style={{width:36,height:36,borderRadius:8,objectFit:"contain",background:"rgba(255,255,255,.2)",padding:2}}/>
           :<div style={{width:36,height:36,borderRadius:8,background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>⚡</div>}
         <div>

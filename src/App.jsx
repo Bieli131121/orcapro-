@@ -3604,34 +3604,14 @@ function ModalBudgetIA({clients,onSave,onClose,nextNum,userId,themeP,themeA}){
     if(!prompt.trim()||!clientName.trim())return;
     setStep(1);setError("");
     try{
-      const res=await fetch("https://api.anthropic.com/v1/messages",{
+      const res=await fetch("https://oehdkvelzjaahddsuivz.supabase.co/functions/v1/gerar-orcamento",{
         method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({
-          model:"claude-sonnet-4-20250514",
-          max_tokens:1000,
-          system:`Você é um assistente especializado em orçamentos para profissionais autônomos brasileiros.
-Gere um orçamento detalhado em JSON com base na descrição do serviço.
-Responda APENAS com JSON válido, sem markdown, sem texto extra.
-Formato:
-{
-  "title": "título profissional do serviço",
-  "category": "uma das opções: Elétrica, Hidráulica, Construção, Pintura, TI, Consultoria, Limpeza, Jardinagem, Outros",
-  "desc": "descrição profissional do serviço em 1-2 frases",
-  "validity": 15,
-  "items": [
-    {"desc": "nome do item/serviço", "qty": 1, "unit": "un/m/m²/h/serv/kg", "price": 150.00}
-  ],
-  "notes": "condições de pagamento sugeridas"
-}
-Use preços realistas para o mercado brasileiro. Seja detalhado nos itens.`,
-          messages:[{role:"user",content:`Serviço: ${prompt}`}]
-        })
+        headers:{"Content-Type":"application/json","Authorization":`Bearer sb_publishable_jGDj5i2XTvo2ADwGcUzfSg_xliD2TiP`},
+        body:JSON.stringify({prompt})
       });
-      const data=await res.json();
-      const text=data.content?.map(c=>c.text||"").join("")||"";
-      const clean=text.replace(/```json|```/g,"").trim();
-      const parsed=JSON.parse(clean);
+      const json=await res.json();
+      if(!json.ok)throw new Error(json.error||"Erro da IA");
+      const parsed=json.data;
       const items=parsed.items.map(i=>({...i,id:uid(),qty:Number(i.qty)||1,price:Number(i.price)||0}));
       setGenerated({...parsed,items});
       setEditItems(items);

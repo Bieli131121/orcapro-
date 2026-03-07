@@ -3606,7 +3606,7 @@ function ModalBudgetIA({clients,onSave,onClose,nextNum,userId,themeP,themeA}){
     try{
       const res=await fetch("https://oehdkvelzjaahddsuivz.supabase.co/functions/v1/gerar-orcamento",{
         method:"POST",
-        headers:{"Content-Type":"application/json","Authorization":`Bearer sb_publishable_jGDj5i2XTvo2ADwGcUzfSg_xliD2TiP`},
+        headers:{"Content-Type":"application/json","Authorization":"Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9laGRrdmVsemphYWhkZHN1aXZ6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2NTE1ODQsImV4cCI6MjA4ODIyNzU4NH0.73xXamO8hnSFEY-yBw3ffNH7dwLSk7JfkmPZZgjNaZg"},
         body:JSON.stringify({prompt})
       });
       const json=await res.json();

@@ -2596,7 +2596,8 @@ function PageFinanceiro({budgets,despesas,setDespesas,receitas=[],setReceitas,pr
   const receitaOrc=bMes.filter(b=>b.status==="aprovado"||b.status==="pago").reduce((s,b)=>s+b.total,0);
   const receitaManual=rMes.reduce((s,r)=>s+(r.valor||0),0);
   const receitaBruta=receitaOrc+receitaManual;
-  const pipeline=bMes.filter(b=>b.status==="pendente"||b.status==="enviado").reduce((s,b)=>s+b.total,0);
+  const bPendentes=bMes.filter(b=>b.status==="pendente"||b.status==="enviado");
+  const pipeline=bPendentes.reduce((s,b)=>s+b.total,0);
   const totalDesp=dMes.reduce((s,d)=>s+(d.valor||0),0);
   const lucroLiq=receitaBruta-totalDesp;
   const margem=receitaBruta>0?((lucroLiq/receitaBruta)*100).toFixed(1):0;
@@ -2643,9 +2644,10 @@ function PageFinanceiro({budgets,despesas,setDespesas,receitas=[],setReceitas,pr
       </PHead>
 
       {/* KPIs */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:12}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:12}}>
         {[
-          {ico:"📋",lbl:"Receita Orçamentos",val:fmtBRL(receitaOrc),sub:`aprovados`,color:"#22D3A0",bg:"rgba(34,211,160,0.06)"},
+          {ico:"📋",lbl:"Receita Orçamentos",val:fmtBRL(receitaOrc),sub:`aprovados/pagos`,color:"#22D3A0",bg:"rgba(34,211,160,0.06)"},
+          {ico:"⏳",lbl:"A Receber",val:fmtBRL(pipeline),sub:`${bPendentes.length} pendente(s)`,color:"#F59E0B",bg:"rgba(245,158,11,0.08)",bold:false},
           {ico:"➕",lbl:"Receita Manual",val:fmtBRL(receitaManual),sub:`${rMes.length} lançamento(s)`,color:"#60A5FA",bg:"rgba(96,165,250,0.06)"},
           {ico:"💚",lbl:"Receita Total",val:fmtBRL(receitaBruta),sub:`orçamentos + manual`,color:"#22D3A0",bg:"rgba(34,211,160,0.1)",bold:true},
         ].map(k=>(
@@ -2672,9 +2674,24 @@ function PageFinanceiro({budgets,despesas,setDespesas,receitas=[],setReceitas,pr
         ))}
       </div>
 
-      {/* Pipeline badge */}
-      {pipeline>0&&<div style={{padding:"10px 16px",background:"rgba(245,158,11,0.08)",border:"1px solid rgba(245,158,11,0.2)",borderRadius:12,marginBottom:18,fontSize:13,color:"#F59E0B",display:"flex",alignItems:"center",gap:8}}>
-        <span>⏳</span> <span>Pipeline aguardando aprovação: <b>{fmtBRL(pipeline)}</b></span>
+      {/* Pendentes A Receber - lista detalhada */}
+      {bPendentes.length>0&&tab==="fluxo"&&<div style={{padding:"12px 16px",background:"rgba(245,158,11,0.06)",border:"1px solid rgba(245,158,11,0.25)",borderRadius:12,marginBottom:18}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+          <span style={{fontSize:13,fontWeight:700,color:"#F59E0B"}}>⏳ A Receber — Orçamentos Pendentes</span>
+          <span style={{fontSize:13,fontWeight:900,color:"#F59E0B"}}>{fmtBRL(pipeline)}</span>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {bPendentes.map(b=>(
+            <div key={b.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 10px",background:"rgba(245,158,11,0.06)",borderRadius:8,border:"1px solid rgba(245,158,11,0.12)"}}>
+              <div style={{display:"flex",gap:10,alignItems:"center"}}>
+                <span style={{fontSize:11,fontWeight:700,color:"#F59E0B",fontFamily:"monospace"}}>{b.num}</span>
+                <span style={{fontSize:12,color:"#E2E8F0"}}>{b.clientName}</span>
+                <span style={{fontSize:10,padding:"1px 7px",borderRadius:20,background:STATUS[b.status]?.bg,color:STATUS[b.status]?.color,fontWeight:700}}>{STATUS[b.status]?.icon} {STATUS[b.status]?.label}</span>
+              </div>
+              <span style={{fontSize:13,fontWeight:700,color:"#F59E0B"}}>{fmtBRL(b.total)}</span>
+            </div>
+          ))}
+        </div>
       </div>}
 
       {/* Tabs */}
